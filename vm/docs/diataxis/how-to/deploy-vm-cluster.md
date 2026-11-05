@@ -60,7 +60,7 @@ sudo vgs
 
 `lsblk` lists disks, filesystems and mounts. `findmnt /` identifies the root filesystem; also check its parent devices in `lsblk` if it uses partitions or LVM. Never select the OS disk. Size or an unmounted state alone does not prove a disk is disposable.
 
-The commands later use `/dev/vdb` as an example only. Your data disk may instead be `/dev/sdb` or an NVMe device, and each host may have a different path. Identify it by serial or stable device identity, verify ownership and confirm that all data may be destroyed. An eligible Ceph OSD device must have no mounted filesystem, filesystem signature, partitions or existing LVM ownership.
+The commands later use `/dev/vdb` as an example only. If you use iximiuz Labs, follow its [disk steps](iximiuz-access.md#wipe-the-storage-data-disks). Your data disk may instead be `/dev/sdb` or an NVMe device, and each host may have a different path. Identify it by serial or stable device identity, verify ownership and confirm that all data may be destroyed. An eligible Ceph OSD device must have no mounted filesystem, filesystem signature, partitions or existing LVM ownership.
 
 If it already contains data or is mounted, stop and back up or preserve it. Unmounting and removing signatures destroys access to the previous filesystem; do this only for a specifically identified, disposable disk. Update any corresponding persistent mount entry before reuse. This guide does not assume that `/data` exists. Our iximiuz-specific disk conversion is recorded in the [deployment finding](../../../knowledge/okf/findings/2026-11-05-vm-bootstrap.md).
 
@@ -97,24 +97,112 @@ printf '\n%s\n' 'PASTE_THE_COMPLETE_CEPH_PUBLIC_KEY_HERE' >> ~/.ssh/authorized_k
 
 The leading newline handles files that lack a final newline. Preserve existing keys. Only the public key is copied; private keys and admin keyrings must stay out of Git.
 
-Each command below runs on node-01. `cephadm shell` supplies the Ceph tools from the container, and `--` separates those tools from cephadm options:
+## Apply the cluster layout
+
+Instead of running one placement command per daemon, this guide describes the whole layout in one file and lets cephadm keep the cluster matching it. Ceph's documentation recommends this approach. See [cluster-spec.example.yaml](../../../config/cluster-spec.example.yaml).
+
+Copy that file to node-01 as `~/cluster-spec.yaml`. Then edit it:
+
+- Replace the three example addresses with yours.
+- Replace `/dev/vdb` if your data disk has another path.
+
+Host labels decide what runs where. `_admin` on two hosts means you can still administer the cluster if node-01 is lost. `monitoring` and `gateway` are used in a later step.
+
+On node-01, set the memory target for each OSD. Our VMs have about 10 GiB of RAM and also run MON and MGR daemons, so automatic tuning is off and the target is 4 GiB. It is a target, not a hard limit:
 
 ```sh
-sudo cephadm shell -- ceph orch host add node-02 192.168.50.12
-sudo cephadm shell -- ceph orch host add node-03 192.168.50.13
-sudo cephadm shell -- ceph orch apply mon --placement=node-01,node-02,node-03
-sudo cephadm shell -- ceph orch apply mgr --placement=node-01,node-02
 sudo cephadm shell -- ceph config set osd osd_memory_target_autotune false
-sudo cephadm shell -- ceph config set osd osd_memory_target 4294967296
-sudo cephadm shell -- ceph orch device ls --wide --refresh
-sudo cephadm shell -- ceph orch daemon add osd node-01:/dev/vdb
-sudo cephadm shell -- ceph orch daemon add osd node-02:/dev/vdb
-sudo cephadm shell -- ceph orch daemon add osd node-03:/dev/vdb
 ```
 
-Confirm only the intended disks are eligible before adding OSDs. OSD memory target is 4 GiB, not a hard limit. Wait for image pulls and daemon convergence before diagnosing transient missing-daemon warnings.
+```sh
+sudo cephadm shell -- ceph config set osd osd_memory_target 4294967296
+```
 
-Bootstrap above deliberately leaves dashboard creation to the next explicit step so credentials are set privately. The required UI step is the [dashboard guide](dashboard.md), which also covers enabling it on an existing cluster. Monitoring charts are deferred; the Ceph management UI remains part of this core setup.
+Apply the layout. `--mount` makes your file visible inside the tools container. **This creates OSDs on the disk path named in the file, so confirm that path on every host first:**
+
+```sh
+sudo cephadm shell --mount $HOME/cluster-spec.yaml:/spec.yaml -- ceph orch apply -i /spec.yaml
+```
+
+Expect lines such as `Added host 'node-02'` and `Scheduled osd.data-disks update...`. Allow a few minutes for images to download. Watch progress:
+
+```sh
+sudo cephadm shell -- ceph -s
+```
+
+Expect three MONs, three MGRs (one active, two standbys) and three OSDs up and in. Bootstrap commonly leaves a "stray daemon" warning about node-01. If you see it, find the active manager's name, shown after `mgr:` in the `ceph -s` output:
+
+```sh
+sudo cephadm shell -- ceph mgr fail YOUR_ACTIVE_MANAGER_NAME
+```
+
+The warning should clear within a minute.
+
+Ceph takes over the whole raw disk through LVM and BlueStore. It uses no filesystem or mount point, so never look for your data in a directory on the storage hosts. Confirm on each storage VM:
+
+```sh
+lsblk -o NAME,SIZE,TYPE,FSTYPE /dev/vdb
+```
+
+Expect `LVM2_member` on the disk and `ceph_bluestore` on the volume under it.
+
+## Add a second administration host
+
+The `_admin` label copies the configuration and admin keyring to node-02, but not the cephadm tool. Without it node-02 cannot run these commands. On **node-02**:
+
+```sh
+curl -fLsS https://download.ceph.com/rpm-20.2.5/el9/noarch/cephadm -o /tmp/cephadm-20.2.5
+```
+
+```sh
+sudo install -m 0755 /tmp/cephadm-20.2.5 /usr/local/sbin/cephadm
+```
+
+```sh
+sudo cephadm shell -- ceph health
+```
+
+Expect `HEALTH_OK`.
+
+## Monitoring and HTTPS gateway
+
+This step adds Prometheus, Alertmanager, Grafana, metric exporters and the HTTPS gateway. First [enable the dashboard](dashboard.md), since the gateway fronts it.
+
+Pin each image by digest so a later redeploy cannot silently change versions. Run these on node-01. The values match [versions.json](../../../config/versions.json):
+
+```sh
+sudo cephadm shell -- ceph config set mgr mgr/cephadm/container_image_prometheus quay.io/prometheus/prometheus@sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64
+```
+
+```sh
+sudo cephadm shell -- ceph config set mgr mgr/cephadm/container_image_alertmanager quay.io/prometheus/alertmanager@sha256:220da6995a919b9ee6e0d3da7ca5f09802f3088007af56be22160314d2485b54
+```
+
+```sh
+sudo cephadm shell -- ceph config set mgr mgr/cephadm/container_image_grafana quay.io/ceph/grafana@sha256:2175aaa91c96733d86d31cf270d5310b278654b03f5718c59de12a865380a31f
+```
+
+```sh
+sudo cephadm shell -- ceph config set mgr mgr/cephadm/container_image_node_exporter quay.io/prometheus/node-exporter@sha256:863b62ff9f392b6f472e22b4b670ad1cabb66b3042502ebd4b2cd192733e1bce
+```
+
+```sh
+sudo cephadm shell -- ceph config set mgr mgr/cephadm/container_image_nginx quay.io/ceph/nginx@sha256:46755d957e58c5cf56362dd38cb218b023cd928abd3353006773bb7f204d656f
+```
+
+Copy [monitoring-spec.yaml](../../../config/monitoring-spec.yaml) to node-01 as `~/monitoring-spec.yaml`. It holds no addresses, so no edits are needed. Apply it:
+
+```sh
+sudo cephadm shell --mount $HOME/monitoring-spec.yaml:/spec.yaml -- ceph orch apply -i /spec.yaml
+```
+
+After a few minutes, list the services:
+
+```sh
+sudo cephadm shell -- ceph orch ls
+```
+
+Expect `alertmanager`, `grafana`, `prometheus` and `mgmt-gateway` at 1/1, and `node-exporter` and `ceph-exporter` at 3/3. Prometheus retention is capped at 2 GB because the OS disks in this example are small. Alertmanager has no notification receiver until you configure one, so alerts appear only in the dashboard.
 
 ## Verification and recovery
 
@@ -127,7 +215,7 @@ ssh ubuntu@192.168.50.11
 Check the cluster with these separate commands:
 
 ```sh
-# Overall status: expect three MONs, an active and standby MGR, and three OSDs up/in.
+# Overall status: expect three MONs, one active and two standby MGRs, and three OSDs up/in.
 sudo cephadm shell -- ceph -s
 
 # Explain warnings: the finished baseline should say HEALTH_OK.
@@ -147,7 +235,7 @@ Inspect `ceph -s`, `ceph health detail`, `ceph orch ps`, `ceph osd tree`, `ceph 
 
 On failure, stop progression and inspect health, orchestrator events and daemon logs on the affected VM. Check `sudo cephadm ls` and systemd Ceph units. Do not rebootstrap, wipe an OSD or delete cluster data as a recovery shortcut. SSH authentication failures should first trigger key fingerprint/line-format checks and sudo checks. Disks already belonging to this cluster must not be wiped again.
 
-Full host reboot/failure recovery, client integration and destructive teardown remain separate validation stages.
+Measured reboot and failure results are in the [production baseline finding](../../../knowledge/okf/findings/2026-11-05-production-baseline.md). Destructive teardown remains a separate stage.
 
 ## Try a small write/read test
 
@@ -160,7 +248,7 @@ sudo cephadm shell -- ceph osd pool set lab-smoke size 3
 sudo cephadm shell -- ceph osd pool set lab-smoke min_size 2
 ```
 
-Wait for `ceph -s` to show clean placement groups before testing. The pool autoscaler may adjust the initial count of 8 placement groups. On our existing cluster this pool already exists; skip creation there.
+Wait for `ceph -s` to show clean placement groups before testing. The pool autoscaler may adjust the initial count of 8 placement groups. Pool deletion is disabled by default as a safety measure, so this test pool stays unless you deliberately remove it. Our current iximiuz deployment skipped this pool and tested through the client volumes instead.
 
 First connect to node-01, then enter the Ceph tools container:
 

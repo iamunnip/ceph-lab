@@ -23,3 +23,7 @@ This changes the documentation placement in ADR 0001, defers the client stages i
 ## Evidence
 
 See the [dashboard finding](../../knowledge/okf/findings/2026-11-05-dashboard.md), [dashboard guide](../diataxis/how-to/dashboard.md), and [iximiuz access guide](../diataxis/how-to/iximiuz-access.md).
+
+## Follow-up on 2026-11-05 redeployment
+
+[ADR 0010](0010-production-aligned-baseline.md) replaces the HTTP backend on 18080, the no-proxy rule and `--public` exposure with the cephadm `mgmt-gateway` on HTTPS port 443, exposed privately.

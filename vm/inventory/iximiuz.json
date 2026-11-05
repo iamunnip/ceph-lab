@@ -4,7 +4,7 @@
   "hosts": [
     {
       "name": "node-01",
-      "playground_id": "6aec229fdd5e89ace3613e0f",
+      "playground_id": "6aec83710744dd9a83b96467",
       "address": "10.8.0.1",
       "role": "ceph",
       "vcpus": 4,
@@ -15,11 +15,11 @@
       "root_size_gib": 20,
       "data_device": "/dev/vdb",
       "data_size_gib_approx": 80,
-      "data_serial": "2306215627225177534"
+      "data_serial": "2306844760015076357"
     },
     {
       "name": "node-02",
-      "playground_id": "6aec22a0c4718fedbc76e5aa",
+      "playground_id": "6aec83720744dd9a83b9649f",
       "address": "10.8.0.2",
       "role": "ceph",
       "vcpus": 4,
@@ -30,11 +30,11 @@
       "root_size_gib": 20,
       "data_device": "/dev/vdb",
       "data_size_gib_approx": 80,
-      "data_serial": "2306425334415608557"
+      "data_serial": "2306320480015608460"
     },
     {
       "name": "node-03",
-      "playground_id": "6aec22a0dd5e89ace3613e4a",
+      "playground_id": "6aec8371d685c5557095b7aa",
       "address": "10.8.0.3",
       "role": "ceph",
       "vcpus": 4,
@@ -45,11 +45,11 @@
       "root_size_gib": 20,
       "data_device": "/dev/vdb",
       "data_size_gib_approx": 80,
-      "data_serial": "2306425339215608555"
+      "data_serial": "2306739905624119207"
     },
     {
       "name": "node-04",
-      "playground_id": "6aec229fdd5e89ace3613e2b",
+      "playground_id": "6aec83710744dd9a83b96484",
       "address": "10.8.0.4",
       "role": "native-client",
       "vcpus": 4,
@@ -60,11 +60,11 @@
       "root_size_gib": 20,
       "data_device": "/dev/vdb",
       "data_size_gib_approx": 80,
-      "data_serial": "2306110769624391103"
+      "data_serial": "2306844761615076355"
     },
     {
       "name": "node-05",
-      "playground_id": "6aec229fdd5e89ace3613e1c",
+      "playground_id": "6aec83710744dd9a83b96472",
       "address": "10.8.0.5",
       "role": "k3s-client",
       "vcpus": 4,
@@ -75,7 +75,9 @@
       "root_size_gib": 20,
       "data_device": "/dev/vdb",
       "data_size_gib_approx": 80,
-      "data_serial": "2306320480015608455"
+      "data_serial": "2306215627225181371"
     }
-  ]
+  ],
+  "wireguard_hub": "node-01",
+  "mesh_mtu": 1280
 }

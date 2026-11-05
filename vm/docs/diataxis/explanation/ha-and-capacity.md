@@ -1,6 +1,6 @@
 # Ceph HA and usable capacity
 
-Ceph has no single switch called “HA mode.” Our HA design combines three MONs, an active/standby MGR pair, and three copies of pool data distributed across three storage hosts.
+Ceph has no single switch called “HA mode.” Our HA design combines three MONs, one active and two standby MGRs, and three copies of pool data distributed across three storage hosts.
 
 ## What one failure means
 
@@ -9,7 +9,7 @@ Ceph has no single switch called “HA mode.” Our HA design combines three MON
 | All three storage hosts healthy | MON quorum and three data copies; clean PGs |
 | One storage host's Ceph services unavailable | Two MONs retain quorum; replicated-pool I/O can continue with two available copies after failure detection/peering |
 | One data disk/OSD unavailable | Data access can continue with two available copies; replication is degraded |
-| Active MGR unavailable | Standby takes over management; dashboard address can change |
+| Active MGR unavailable | A standby takes over management; the gateway URL stays the same |
 | Two storage hosts unavailable | MON quorum lost and pool min_size not met; this setup cannot provide normal storage service |
 
 `size=3` requests three copies. `min_size=2` requires at least two copies for pool I/O; it is not a desired replica count. CRUSH must place those copies on separate hosts. Inspect these settings on node-01:
@@ -54,5 +54,11 @@ sudo cephadm shell -- rbd du --pool k3s-rbd
 Node-04 maps its own RBD image, mounts ext4 at /srv/cephdata and runs a native nginx service using that mount. Node-05 runs single-node k3s; Ceph-CSI creates and mounts separate images for PVCs. The clients' local second disks are not part of the cluster.
 
 Both clients get Ceph's replicated storage, but that does not make either client VM or the single k3s server highly available. Ordinary ext4 RBD volumes must not be mounted read-write by multiple independent clients. Use separate RBD images; shared filesystem consumption is a later CephFS exercise.
+
+## HA depends on the network too
+
+Ceph can only be as available as the network between its hosts. In the iximiuz example, node-01 is the WireGuard hub, so all traffic between other nodes passes through it. Rebooting node-01 also cut node-02 off from node-03, even though both were healthy, and one client write stalled for 27 s before recovering without errors. A production cluster needs storage hosts connected without a single shared relay. With a different network, this limit does not apply.
+
+Stopping Ceph on spoke node-03 behaved as the table above predicts: both clients wrote in under 0.25 s while PGs were undersized, and health returned 13 s after restoring services. See the [production baseline finding](../../../knowledge/okf/findings/2026-11-05-production-baseline.md).
 
 See [Ceph pool settings](https://docs.ceph.com/en/tentacle/rados/operations/pools/) and [monitor quorum](https://docs.ceph.com/en/tentacle/rados/configuration/mon-config-ref/). Measured results are in the [client finding](../../../knowledge/okf/findings/2026-11-05-client-storage.md).

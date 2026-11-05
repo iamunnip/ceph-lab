@@ -1,0 +1,39 @@
+# Monitoring stack and HTTPS gateway. Placement uses host labels from cluster-spec.
+# No addresses or secrets here, so this file is the same for every provider.
+service_type: node-exporter
+placement:
+  host_pattern: "*"
+---
+service_type: ceph-exporter
+placement:
+  host_pattern: "*"
+---
+# Root disks are small, so retention is capped by size as well as time.
+service_type: prometheus
+placement:
+  label: monitoring
+  count: 1
+spec:
+  retention_time: 15d
+  retention_size: 2GB
+---
+service_type: alertmanager
+placement:
+  label: monitoring
+  count: 1
+---
+service_type: grafana
+placement:
+  label: monitoring
+  count: 1
+---
+service_type: mgmt-gateway
+placement:
+  label: gateway
+  count: 1
+spec:
+  port: 443
+  ssl: true
+  ssl_protocols:
+    - TLSv1.2
+    - TLSv1.3

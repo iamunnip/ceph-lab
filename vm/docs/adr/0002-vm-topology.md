@@ -17,3 +17,7 @@ The lab can demonstrate one-host failure behavior, but cannot restore three repl
 ## Implementation follow-up
 
 The initial topology was deployed and validated on 2026-11-05. [ADR 0004](0004-vm-deployment-baseline.md) records concrete hosts, artifacts and operational choices; the [deployment finding](../../knowledge/okf/findings/2026-11-05-vm-bootstrap.md) records measured results and remaining validation.
+
+## Follow-up on 2026-11-05 redeployment
+
+[ADR 0010](0010-production-aligned-baseline.md) keeps this topology, and runs three MGRs instead of two.

@@ -14,4 +14,8 @@
 
 - [0008: RBD clients and shared capacity budget](0008-rbd-clients-and-capacity-budget.md)
 
+- [0009: Standing approval to wipe iximiuz storage data disks](0009-standing-disk-wipe-approval.md)
+
+- [0010: Align the VM deployment with production practice](0010-production-aligned-baseline.md)
+
 Future ADRs should state status, context, decision, consequences and links to superseded decisions where applicable.

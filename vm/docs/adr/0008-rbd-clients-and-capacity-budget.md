@@ -27,3 +27,7 @@ Single-host Ceph service failure can leave the two replicas available for I/O. W
 The [client finding](../../knowledge/okf/findings/2026-11-05-client-storage.md) records actual mounts, PVC provisioning, checksums, permission checks and the controlled node-03 MON/OSD outage. See [HA and capacity](../diataxis/explanation/ha-and-capacity.md), [native client](../diataxis/how-to/native-rbd-client.md) and [k3s client](../diataxis/how-to/k3s-rbd-client.md) for reader instructions.
 
 This implements the RBD client progression from ADR 0003. The three-host core setup in ADR 0007 remains valid; these clients are now implemented extensions.
+
+## Follow-up on 2026-11-05 redeployment
+
+[ADR 0010](0010-production-aligned-baseline.md) keeps RBD-NBD after testing kernel RBD, which failed on kernel 6.1.167 with `libceph: secret too big 32`. It also enables the full image feature set and sets target size ratios.
