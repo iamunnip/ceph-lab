@@ -1,0 +1,31 @@
+# Local Python caches
+__pycache__/
+*.py[cod]
+.venv/
+
+# Reader-specific VM inventory
+vm/inventory/local.json
+vm/inventory/*.local.json
+
+# Local environment and cloud/Kubernetes credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+.aws/
+.kube/
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+secrets/
+
+# Ceph credentials and TLS private material
+*.keyring
+*.key
+*.pem
+ceph-dashboard-password
+ceph-dashboard-user-create.log
+
+# Local runtime output
+*.log
+*.pid

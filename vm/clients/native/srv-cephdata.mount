@@ -1,0 +1,14 @@
+[Unit]
+Description=Mount native Ceph data for the example service
+Requires=ceph-native-map.service
+After=ceph-native-map.service
+BindsTo=ceph-native-map.service
+
+[Mount]
+What=/dev/nbd0
+Where=/srv/cephdata
+Type=ext4
+Options=_netdev,noatime
+
+[Install]
+WantedBy=remote-fs.target

@@ -1,0 +1,16 @@
+{
+  "ceph": "20.2.5",
+  "cephadm_commit": "ed27c686770872022f4c1de04f6b0ac5d5384ded",
+  "cephadm_url": "https://download.ceph.com/rpm-20.2.5/el9/noarch/cephadm",
+  "ceph_image": "quay.io/ceph/ceph@sha256:4337ac8ac81d40df136e5eac92ca53bb52360a5e039f3d1f7935e729eb5ef42c",
+  "podman": "5.7.0",
+  "k3s": "v1.36.6+k3s1",
+  "ceph_csi": "3.18.2",
+  "ceph_csi_chart_sha256": "62e0c93615a63c7a4cc91211011f378c0318d00ba0e034be5c817c6f52dba897",
+  "ceph_csi_image": "quay.io/cephcsi/cephcsi@sha256:55eac6e7afc3e48c545bb4f4686ddd068a9db9528726e1aed2babd85de861544",
+  "ceph_csi_ceph_userspace": "20.2.4",
+  "helm": "v3.19.0",
+  "native_mounter": "rbd-nbd using Ceph 20.2.5 pinned container",
+  "kernel": "6.1.167",
+  "nginx_demo_image": "docker.io/library/nginx@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284"
+}

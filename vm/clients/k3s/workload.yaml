@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ceph-demo
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-data
+  namespace: ceph-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ceph-rbd
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ceph-web
+  namespace: ceph-demo
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ceph-web
+  template:
+    metadata:
+      labels:
+        app: ceph-web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.28.0-alpine@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              if [ ! -f /usr/share/nginx/html/index.html ]; then
+                printf 'Persistent Ceph storage from node-05 k3s.\n' > /usr/share/nginx/html/index.html
+              fi
+              exec nginx -g 'daemon off;'
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: web-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ceph-web
+  namespace: ceph-demo
+spec:
+  selector:
+    app: ceph-web
+  ports:
+    - port: 80
+      targetPort: 80
