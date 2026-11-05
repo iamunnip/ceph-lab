@@ -7,7 +7,7 @@ This provider-independent procedure inventories three Linux VMs before deploymen
 3. Identify the intended data disks by stable device identity where supported. Check device ancestry and root filesystem backing storage. A device being unmounted is insufficient proof that it is disposable. Do not wipe, partition, format, or zap devices in preflight.
 4. Verify existing routed reachability among all storage nodes and from any optional clients. Check host resolution and advertised IP consistency. Record network MTU and relevant firewall restrictions; check actual Ceph listeners after bootstrap. Use your existing network; WireGuard is optional.
 5. Verify host support for the selected cephadm release: Python, systemd, container runtime, time synchronization and LVM tooling. Inventory before installing prerequisites.
-6. Confirm your browser can reach the intended dashboard VM on HTTPS port 8443, or plan iximiuz exposure. Native/k3s kernel and CSI checks belong to optional client extensions, not the core cluster preflight.
+6. Confirm your browser can reach the intended dashboard gateway VM on HTTPS port 443, or plan iximiuz exposure. Native/k3s kernel and CSI checks belong to optional client extensions, not the core cluster preflight.
 7. Establish whether your VM platform preserves disks, identities and IPs across stops/restarts, and whether reset/deletion destroys data. For iximiuz, include playground reset/deletion. Record resource limits and expected lab lifetime.
 8. Fill the reference inventory and knowledge register. Choose pinned versions only after checking the compatibility matrix and actual resource fit.
 

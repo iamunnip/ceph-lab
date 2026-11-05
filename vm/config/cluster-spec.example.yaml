@@ -1,0 +1,36 @@
+# Declarative cephadm layout for the three storage VMs.
+# Replace the example addresses, then apply on node-01 with:
+#   sudo cephadm shell --mount /path/to/this/file:/spec.yaml -- ceph orch apply -i /spec.yaml
+service_type: host
+hostname: node-01
+addr: 192.168.50.11
+labels: [_admin, mon, mgr, osd]
+---
+service_type: host
+hostname: node-02
+addr: 192.168.50.12
+labels: [_admin, mon, mgr, osd, monitoring, gateway]
+---
+service_type: host
+hostname: node-03
+addr: 192.168.50.13
+labels: [mon, mgr, osd]
+---
+service_type: mon
+placement:
+  label: mon
+---
+service_type: mgr
+placement:
+  label: mgr
+---
+# Only the named device on labeled hosts. Change the path to your data disk.
+service_type: osd
+service_id: data-disks
+placement:
+  label: osd
+spec:
+  objectstore: bluestore
+  data_devices:
+    paths:
+      - /dev/vdb

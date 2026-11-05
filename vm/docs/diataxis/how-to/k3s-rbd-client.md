@@ -9,32 +9,36 @@ Examples use storage IPs 192.168.50.11–13 and k3s IP 192.168.50.15. Replace th
 Run creation steps only once:
 
 ```sh
-sudo cephadm shell -- ceph osd pool create k3s-rbd 8
+sudo cephadm shell -- ceph osd pool create k3s-rbd
+```
+
+```sh
 sudo cephadm shell -- ceph osd pool application enable k3s-rbd rbd
+```
+
+```sh
 sudo cephadm shell -- rbd pool init k3s-rbd
-sudo cephadm shell -- ceph osd pool set k3s-rbd size 3
-sudo cephadm shell -- ceph osd pool set k3s-rbd min_size 2
+```
+
+Tell the autoscaler to expect about half the cluster here:
+
+```sh
+sudo cephadm shell -- ceph osd pool set k3s-rbd target_size_ratio 0.5
+```
+
+```sh
 sudo cephadm shell -- ceph osd pool set-quota k3s-rbd max_bytes 42949672960
 ```
 
 The quota limits stored logical data to 40 GiB. It shares physical capacity with the native pool and other pools; it does not reserve extra disks.
 
-Create the pool-scoped identity, placing its output in a temporary file inside the tools container rather than printing it:
+Create the pool-scoped identity. Output is discarded so the key is not displayed:
 
 ```sh
-sudo cephadm shell -- ceph auth get-or-create client.k3s mon 'profile rbd' osd 'profile rbd pool=k3s-rbd' mgr 'profile rbd pool=k3s-rbd' -o /tmp/k3s.keyring
+sudo cephadm shell -- ceph auth get-or-create client.k3s mon 'profile rbd' osd 'profile rbd pool=k3s-rbd' mgr 'profile rbd pool=k3s-rbd' > /dev/null
 ```
 
-Export its key into a private directory on node-01, then transfer it using your authenticated SSH access:
-
-```sh
-umask 077
-mkdir -p ~/ceph-k3s-transfer
-sudo cephadm shell -- ceph auth get-key client.k3s > ~/ceph-k3s-transfer/userKey
-scp ~/ceph-k3s-transfer/userKey ubuntu@192.168.50.15:~/ceph-k3s.key
-```
-
-Never transfer the admin keyring. For iximiuz, use authenticated playground file transfer appropriate to your access setup. The Secret is created on node-05 below; remove temporary key files after verifying it.
+The key moves to node-05 in a later step. Never transfer the admin keyring.
 
 Find the cluster identifier on node-01:
 
@@ -46,24 +50,63 @@ sudo cephadm shell -- ceph fsid
 
 Skip installation if an appropriate k3s cluster already exists. Inspect its version, kubelet directory and networking before adapting the CSI settings.
 
-For a new node-05, fetch the installer from the pinned release and install:
+Copy [k3s-config.example.yaml](../../../clients/k3s/k3s-config.example.yaml) to node-05 as `/tmp/k3s-config.yaml`. Replace the example address and set `flannel-iface` to the interface holding that address. The iximiuz deployment uses `10.8.0.5` and `mesh0`. The file turns on three things worth knowing:
+
+- `secrets-encryption` encrypts Kubernetes Secrets at rest, including the Ceph key.
+- `cluster-init` uses embedded etcd, which takes scheduled snapshots and lets you add servers later.
+- Disabling `local-storage` avoids accidentally testing the local-path provisioner instead of Ceph.
+
+On node-05, put the configuration in place:
+
+```sh
+sudo install -d -m 0755 /etc/rancher/k3s
+```
+
+```sh
+sudo install -m 0600 /tmp/k3s-config.yaml /etc/rancher/k3s/config.yaml
+```
+
+Download the installer from the pinned release:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/k3s-io/k3s/v1.36.6%2Bk3s1/install.sh -o /tmp/install-k3s.sh
-sudo env INSTALL_K3S_VERSION=v1.36.6+k3s1 sh /tmp/install-k3s.sh server --node-name node-05 --node-ip 192.168.50.15 --advertise-address 192.168.50.15 --disable traefik --disable servicelb --disable local-storage
+```
+
+Run it:
+
+```sh
+sudo env INSTALL_K3S_VERSION=v1.36.6+k3s1 sh /tmp/install-k3s.sh
+```
+
+Check the node:
+
+```sh
 sudo k3s kubectl get nodes -o wide
 ```
 
-Expect node-05 to become Ready. When multiple VM interfaces exist, select the appropriate interface with `--flannel-iface YOUR_INTERFACE` if needed. The observed iximiuz install selected its existing mesh0 interface; networking was not reconfigured. Disabling local-storage avoids accidentally testing the local-path provisioner instead of Ceph.
+Expect node-05 `Ready` with your chosen address. Check encryption:
+
+```sh
+sudo k3s secrets-encrypt status
+```
+
+Expect `Encryption Status: Enabled`.
 
 Load NBD support and persist it across boots:
 
 ```sh
 sudo modprobe nbd nbds_max=16
-printf 'nbd\n' | sudo tee /etc/modules-load.d/ceph-csi.conf
 ```
 
-This lab uses the RBD-NBD mounter with Ceph-CSI's newer userspace tools because of the observed client/kernel credential compatibility issue. Upstream labels [RBD-NBD support Alpha](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/docs/design/proposals/rbd-nbd.md); it is a lab choice, not a production recommendation.
+```sh
+printf 'options nbd nbds_max=16\n' | sudo tee /etc/modprobe.d/ceph-nbd.conf
+```
+
+```sh
+printf 'nbd\n' | sudo tee /etc/modules-load.d/ceph-nbd.conf
+```
+
+The kernel mounter is the production recommendation, but it fails on our tested kernel 6.1.167, see the [native guide](native-rbd-client.md#install-a-compatible-mapper-on-node-04). This guide therefore sets `mounter: rbd-nbd`, which upstream labels [Alpha](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/docs/design/proposals/rbd-nbd.md). On a kernel that accepts current Ceph keys, remove that line from the StorageClass before creating volumes.
 
 ## Install pinned Helm and chart on node-05
 
@@ -84,13 +127,23 @@ Helm checksum verification must say OK. The chart checksum must be `62e0c93615a6
 
 Copy the three files in [clients/k3s](../../../clients/k3s/) to node-05. Edit `values.example.yaml`: replace the FSID placeholder and all three monitor addresses. Confirm the actual kubelet directory is `/var/lib/kubelet` before retaining that value. Edit `storageclass.example.yaml` with the same FSID. No secrets belong in either file.
 
-On node-05, create the namespace and Secret from the transferred private key:
+On node-05, create the namespace. CSI node plugins need privileged host access to mount volumes:
 
 ```sh
 sudo k3s kubectl create namespace ceph-csi
-sudo k3s kubectl label namespace ceph-csi pod-security.kubernetes.io/enforce=privileged
-sudo k3s kubectl -n ceph-csi create secret generic ceph-rbd-client --from-literal=userID=k3s --from-file=userKey="$HOME/ceph-k3s.key"
 ```
+
+```sh
+sudo k3s kubectl label namespace ceph-csi pod-security.kubernetes.io/enforce=privileged
+```
+
+Create the Secret. Run this on **your own computer**, using your own SSH access. It pipes the key directly from node-01 into Kubernetes, so the key is never written to a file or displayed. iximiuz users replace each `ssh` with `labctl ssh PLAYGROUND_ID --`:
+
+```sh
+ssh ubuntu@192.168.50.11 'sudo cephadm shell -- ceph auth get-key client.k3s 2>/dev/null' | ssh ubuntu@192.168.50.15 'sudo k3s kubectl -n ceph-csi create secret generic ceph-rbd-client --from-literal=userID=k3s --from-file=userKey=/dev/stdin'
+```
+
+Expect `secret/ceph-rbd-client created`.
 
 The client ID is `k3s`, without the `client.` prefix. CSI's node plugin needs privileged host access to mount volumes; it is not an ordinary application pod. Install the driver and StorageClass using the edited file paths:
 
@@ -102,7 +155,7 @@ sudo k3s kubectl get pods -n ceph-csi
 
 Expect the provisioner and node plugin to become Running and fully Ready. This single-node lab uses one provisioner replica and OnDelete node-plugin updates to avoid automatically interrupting NBD processes.
 
-Remove `~/ceph-k3s.key` and the private key staging copy on node-01 once access is verified. Kubernetes Secrets require access control; base64 encoding is not encryption. Do not export the Secret into Git.
+Kubernetes Secrets still require access control, since anyone allowed to read the Secret through the API sees the key. Do not export it into Git.
 
 ## Create a PVC and workload
 
@@ -132,3 +185,19 @@ sudo k3s kubectl -n ceph-demo exec deployment/ceph-web -- sha256sum /usr/share/n
 Expect the same marker and checksum. Keep the PVC: deleting a pod is different from deleting its storage claim. This class uses Retain, so deleting a PVC does not automatically destroy the underlying image; reclaiming it requires an explicit storage lifecycle procedure.
 
 The test proves persistence across pod recreation, not Kubernetes node failover. With one k3s VM, application/node HA is outside this setup. Ceph-side HA and observed results are explained in the [capacity guide](../explanation/ha-and-capacity.md) and [client finding](../../../knowledge/okf/findings/2026-11-05-client-storage.md).
+
+## Back up the Kubernetes datastore
+
+k3s takes etcd snapshots on a schedule. To take one now, on node-05:
+
+```sh
+sudo k3s etcd-snapshot save --name manual
+```
+
+List them:
+
+```sh
+sudo ls /var/lib/rancher/k3s/server/db/snapshots
+```
+
+Snapshots stay on the same VM until you copy them elsewhere. Restoring also needs the server token from `/var/lib/rancher/k3s/server/token`, so store both securely outside the VM. This protects Kubernetes objects, not the data inside your volumes. This k3s has no VolumeSnapshot CRDs, so CSI snapshots are not available until you add them.

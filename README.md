@@ -2,7 +2,7 @@
 
 A hands-on lab for learning Ceph on virtual machines and Kubernetes, including Rook.
 
-The VM track contains the deployment plan, observed inventory, pinned Ceph versions, and [live deployment evidence](vm/knowledge/okf/findings/2026-11-05-vm-bootstrap.md). Kubernetes and Rook deployment tracks are planned for later.
+The VM track contains the deployment plan, observed inventory, pinned Ceph versions, and [live deployment evidence](vm/knowledge/okf/findings/2026-11-05-production-baseline.md). Kubernetes and Rook deployment tracks are planned for later.
 
 ## Repository structure
 

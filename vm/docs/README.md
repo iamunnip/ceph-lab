@@ -14,6 +14,7 @@ For every meaningful change, update the affected guides/reference and the knowle
 
 ## Index
 
+- [Production-aligned baseline decision](adr/0010-production-aligned-baseline.md)
 - [Ceph HA and usable capacity](diataxis/explanation/ha-and-capacity.md)
 - [Native VM RBD client](diataxis/how-to/native-rbd-client.md)
 - [k3s RBD client](diataxis/how-to/k3s-rbd-client.md)

@@ -6,7 +6,7 @@ provisioner: rbd.csi.ceph.com
 parameters:
   clusterID: REPLACE_WITH_CEPH_FSID
   pool: k3s-rbd
-  imageFeatures: layering
+  imageFeatures: layering,exclusive-lock,object-map,fast-diff,deep-flatten
   mounter: rbd-nbd
   csi.storage.k8s.io/provisioner-secret-name: ceph-rbd-client
   csi.storage.k8s.io/provisioner-secret-namespace: ceph-csi

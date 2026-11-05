@@ -6,6 +6,7 @@
 - Record consequential architecture changes in `vm/docs/adr/`; keep the architecture and track plans consistent.
 - Never commit secrets or unredacted cluster credentials.
 - Never infer permission to wipe a disk from its size or availability. Destructive operations need explicit targets, ownership checks and confirmation.
+  The user has given standing approval for one case: `/dev/vdb` on iximiuz storage hosts node-01 to node-03 during a new deployment. Run the checks in `vm/docs/adr/0009-standing-disk-wipe-approval.md` and do not ask when they all pass. If any check fails, or for any other disk, host or provider, stop and ask.
 - Pin deployment artifacts and record compatibility evidence before installing components. Validate stage prerequisites and document recovery.
 
 - Keep documentation beginner friendly: use separate, copy-and-paste shell commands, explain their purpose and expected output, and identify which VM runs them. Use standard Ceph CLI commands for current lab verification; do not reintroduce custom validators or command wrappers without a concrete automation need.

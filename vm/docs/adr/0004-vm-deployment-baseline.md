@@ -35,3 +35,7 @@ This ADR refines ADR 0002 without superseding its topology decision.
 ## Scope follow-up
 
 [ADR 0007](0007-vm-owned-docs-and-dashboard.md) moves VM docs/knowledge under the VM track, makes client stages optional extensions, and enables the dashboard in the three-host core setup. Earlier deployment observations remain historical evidence.
+
+## Follow-up on 2026-11-05 redeployment
+
+[ADR 0010](0010-production-aligned-baseline.md) deploys the monitoring stack, removes the retained `lab-smoke` pool and uses a declarative spec. The observations above describe the earlier playgrounds.
