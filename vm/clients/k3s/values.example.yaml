@@ -1,0 +1,18 @@
+# Replace clusterID and monitor addresses before installing.
+csiConfig:
+  - clusterID: REPLACE_WITH_CEPH_FSID
+    monitors:
+      - 192.168.50.11:6789
+      - 192.168.50.12:6789
+      - 192.168.50.13:6789
+kubeletDir: /var/lib/kubelet
+driverName: rbd.csi.ceph.com
+logLevel: 0
+nodeplugin:
+  updateStrategy: OnDelete
+provisioner:
+  replicaCount: 1
+storageClass:
+  create: false
+secret:
+  create: false
