@@ -1,0 +1,72 @@
+{
+  "observed_on": "2026-11-08",
+  "source": "vm/vagrant/Vagrantfile",
+  "ssh_user": "vagrant",
+  "ceph_network": "192.168.56.0/24 host-only network (vboxnet0), guest interface enp0s8",
+  "nat_network": "enp0s3 with 10.0.2.15 on every VM; never use it for Ceph",
+  "hosts": [
+    {
+      "name": "node-01",
+      "address": "192.168.56.11",
+      "role": "ceph",
+      "vcpus": 2,
+      "memory_mib": 6144,
+      "os_device": "/dev/sda",
+      "os_size_gib": 30,
+      "data_device": "/dev/sdb",
+      "data_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:1:0",
+      "data_size_gib": 20,
+      "reserve_device": "/dev/sdc",
+      "reserve_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:2:0",
+      "reserve_size_gib": 20
+    },
+    {
+      "name": "node-02",
+      "address": "192.168.56.12",
+      "role": "ceph",
+      "vcpus": 2,
+      "memory_mib": 6144,
+      "os_device": "/dev/sda",
+      "os_size_gib": 30,
+      "data_device": "/dev/sdb",
+      "data_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:1:0",
+      "data_size_gib": 20,
+      "reserve_device": "/dev/sdc",
+      "reserve_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:2:0",
+      "reserve_size_gib": 20
+    },
+    {
+      "name": "node-03",
+      "address": "192.168.56.13",
+      "role": "ceph",
+      "vcpus": 2,
+      "memory_mib": 6144,
+      "os_device": "/dev/sda",
+      "os_size_gib": 30,
+      "data_device": "/dev/sdb",
+      "data_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:1:0",
+      "data_size_gib": 20,
+      "reserve_device": "/dev/sdc",
+      "reserve_by_path": "/dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:2:0",
+      "reserve_size_gib": 20
+    },
+    {
+      "name": "node-04",
+      "address": "192.168.56.14",
+      "role": "native-client",
+      "vcpus": 2,
+      "memory_mib": 6144,
+      "os_size_gib": 30,
+      "status": "defined in the Vagrantfile, not created yet"
+    },
+    {
+      "name": "node-05",
+      "address": "192.168.56.15",
+      "role": "k3s-client",
+      "vcpus": 2,
+      "memory_mib": 6144,
+      "os_size_gib": 30,
+      "status": "defined in the Vagrantfile, not created yet"
+    }
+  ]
+}

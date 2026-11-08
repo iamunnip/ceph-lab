@@ -2,9 +2,9 @@
 csiConfig:
   - clusterID: REPLACE_WITH_CEPH_FSID
     monitors:
-      - 192.168.50.11:3300
-      - 192.168.50.12:3300
-      - 192.168.50.13:3300
+      - 192.168.56.11:3300
+      - 192.168.56.12:3300
+      - 192.168.56.13:3300
 kubeletDir: /var/lib/kubelet
 driverName: rbd.csi.ceph.com
 logLevel: 0

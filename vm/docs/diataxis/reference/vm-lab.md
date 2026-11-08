@@ -1,53 +1,49 @@
 # VM lab reference
 
-The reusable lab requires three reachable Linux VMs, three dedicated data disks, unique hostnames, sudo-enabled SSH access and sufficient resources. The [generic inventory template](../../../inventory/example.json) uses example addresses; replace them. The observed values below describe our iximiuz deployment. See [ADR 0005](../../adr/0005-provider-independent-guides.md) for the portability policy.
+The lab is five VirtualBox VMs created by the [Vagrantfile](../../../vagrant/Vagrantfile). The [observed inventory](../../../inventory/vagrant.json) records what the VMs reported on 2026-11-08.
 
-Status: topology planned below; actual [host inventory](../../../inventory/iximiuz.json) was collected on 2026-11-05. Logical ceph-1/2/3 map to node-01/02/03; clients map to node-04/05. See [deployment evidence](../../../knowledge/okf/findings/2026-11-05-vm-bootstrap.md).
+| VM | Address | Role | Extra disks | Planned daemons and software |
+| --- | --- | --- | --- | --- |
+| node-01 | 192.168.56.11 | Storage, first administration host | 20 GiB data `/dev/sdb`, 20 GiB reserve `/dev/sdc` | MON, MGR, OSD |
+| node-02 | 192.168.56.12 | Storage, second administration host | same | MON, MGR, OSD, Prometheus, Alertmanager, Grafana, gateway |
+| node-03 | 192.168.56.13 | Storage | same | MON, MGR, OSD |
+| node-04 | 192.168.56.14 | Normal VM using Ceph | none | 5 GiB RBD image, ext4 at /srv/cephdata, host nginx |
+| node-05 | 192.168.56.15 | Single-node k3s using Ceph | none | k3s, Ceph-CSI, 5 GiB RWO PVC, nginx |
 
-| Logical name | Role | Additional storage | Planned daemons/software |
-| --- | --- | --- | --- |
-| ceph-1 | Storage and initial administration | 80 GB | MON, MGR, OSD |
-| ceph-2 | Storage and second administration host | 80 GB | MON, MGR, OSD, Prometheus, Alertmanager, Grafana, gateway |
-| ceph-3 | Storage | 80 GB | MON, MGR, OSD |
-| client-native (implemented extension) | node-04 Linux storage consumer | Local disk unused by Ceph | 10 GiB RBD-NBD/ext4 mount and host nginx |
-| client-k3s (implemented extension) | node-05 single-node Kubernetes | Local disk unused by Ceph | k3s, Ceph-CSI, 5 GiB RWO PVC and nginx |
+Every VM: 2 vCPUs, 6 GB RAM, 20 GB OS disk `/dev/sda`, Ubuntu 26.04.1 LTS, kernel 7.0.0-43-generic after the upgrade (the box ships 7.0.0-34-generic), SSH user `vagrant` with passwordless sudo. `vagrant up` starts node-01 to node-03; node-04 and node-05 are started by name.
 
-CephFS adds two MDS daemons on different storage hosts (one active, one standby), subject to measured RAM availability. RGW is optional and has no HA commitment.
-
-Record actual hostnames, reachable Ceph IPs, OS/kernel, vCPU/RAM, root disk size/free space, data disk stable identifier and capacity, container runtime, SSH user, and time sync state during preflight. Logical names are labels, not claims about existing VM names. Keep private access details and credentials outside Git.
+CephFS adds two MDS daemons on different storage hosts (one active, one standby), subject to measured RAM. RGW is optional and has no HA commitment.
 
 ## Storage and failure policy
 
-- One explicitly identified whole data device per storage VM; root devices are excluded.
+- One whole data device per storage VM, `/dev/sdb`, selected by path in the [cluster spec](../../../config/cluster-spec.example.yaml). The OS disk `/dev/sda` is never used.
+- The reserve disk `/dev/sdc` is added only by the [reserve disk exercise](../how-to/add-reserve-disks.md). Never apply `--all-available-devices`.
+- Disks are identified by VirtIO SCSI port: port 1 (`scsi-0:0:1:0`) is the data disk, port 2 (`scsi-0:0:2:0`) the reserve disk. VirtualBox gives these disks no serial number, and the OS disk is also 20 GiB, so size never identifies a disk.
 - Replicated pools: `size=3`, `min_size=2`, CRUSH failure domain `host`.
-- Verified raw capacity: 240 GiB; nominal replicated capacity: 80 GiB before metadata, allocation overhead and operational headroom. Ceph initially reported about 76 GiB shared MAX AVAIL.
-- Keep test data small and establish a measured capacity budget before recovery tests. Do not fill the cluster to its full/nearfull thresholds.
-- One storage-host outage should retain two-monitor quorum and allow eligible replicated-pool I/O while degraded. With only two remaining OSDs, three replicas cannot be restored until the third host returns.
-- Two storage-host outages lose MON quorum and do not meet the planned pool write policy. No continued-service guarantee is made.
+- Raw capacity 60 GiB at first, 120 GiB with the reserve disks. Usable with three copies: about 20 GiB, then about 40 GiB.
+- One storage-host outage should keep two-monitor quorum and allow eligible I/O while degraded. With only three hosts, the third copy cannot be rebuilt until the host returns.
+- Two storage-host outages lose MON quorum and stop normal service.
 
 ## Network contract
 
-Use an existing routed network between the three VMs and browser host. WireGuard is not required. In our observed iximiuz deployment, WireGuard is already configured. Reuse existing addresses and routes; do not configure peers, keys, hubs, or spokes. Verify all storage hosts and clients can reach the advertised Ceph endpoints, including direct client-to-OSD traffic through the existing routing.
+| Network | Interface | Addresses | Use |
+| --- | --- | --- | --- |
+| VirtualBox NAT | `enp0s3` | 10.0.2.15 on every VM | Internet and `vagrant ssh` only |
+| VirtualBox host-only `vboxnet0` | `enp0s8` | 192.168.56.11 to 15, host 192.168.56.1 | Ceph public network, SSH between VMs, dashboard |
 
-In that deployment, the existing WireGuard network is the Ceph public network (measured MTU 1280, RTT up to about 30 ms, node-01 as hub); no separate replication network is planned. Confirm monitor ports (normally TCP 3300 and legacy 6789 if enabled) and the selected release's daemon port range (commonly TCP 6800 to 7568). Inspect actual listeners and firewall rules. Record effective MTU and reachability under larger transfers. Do not broadly disable firewalls.
-
-A hub outage may isolate multiple nodes at once. The five VMs are not proof of independent underlying hardware failure domains. Single-node k3s is a storage integration test, not an HA Kubernetes cluster.
+Ceph has one public network, 192.168.56.0/24, and no separate cluster network. Monitor ports are TCP 3300 and 6789, OSD and other daemons use TCP 6800 to 7568, and the dashboard gateway uses TCP 443 on node-02. The host-only network is reachable only from the host computer.
 
 ## Version contract
 
-Selected Ceph/cephadm 20.2.5, Podman 5.7.0 and digest-pinned monitoring images; see [version pins](../../../config/versions.json). Client versions: k3s v1.36.6+k3s1, Ceph-CSI 3.18.2, Helm v3.19.0. Native mapping uses the pinned Ceph 20.2.5 container; CSI userspace is Ceph 20.2.4. Record Ceph release and image digest, cephadm version/source, host OS/kernel/runtime, k3s/Kubernetes version, Ceph-CSI release/chart and image digests, Helm and client versions. Check supported combinations in the selected release documentation. Upstream `latest` documentation is orientation only and may describe development releases.
-
-## Sources
-
-- [Cephadm deployment requirements](https://docs.ceph.com/en/latest/cephadm/install/)
-- [iximiuz Labs playground building blocks](https://labs.iximiuz.com/docs/custom-playgrounds/building-blocks)
-- [Ceph-CSI project and compatibility information](https://github.com/ceph/ceph-csi)
-- [Ceph RBD with CSI](https://docs.ceph.com/en/latest/csi/rbd/)
+Ceph and cephadm 20.2.5, Podman 5.7.0 and digest-pinned monitoring images; see [version pins](../../../config/versions.json). Client versions: k3s v1.36.6+k3s1, Ceph-CSI 3.18.2, Helm v3.19.0. Host tools: Vagrant 2.4.9, VirtualBox 7.2.22, box `cloud-image/ubuntu-26.04` 20260927.0.0. Check supported combinations in the selected release documentation. Upstream `latest` documentation is orientation only and may describe development releases.
 
 ## Dashboard
 
-The UI is part of the core three-VM setup. It runs in the active MGR, behind the cephadm `mgmt-gateway` on HTTPS port 443 with a self-signed certificate. Follow the [dashboard guide](../how-to/dashboard.md). On VirtualBox or other reachable VMs, open the gateway host directly. On iximiuz, use `labctl expose port` as described in the [provider guide](../how-to/iximiuz-access.md). Do not expose MON or OSD ports.
+The UI is part of the core setup. It runs in the active MGR, behind a cephadm `mgmt-gateway` on HTTPS port 443 of every storage VM, with one self-signed certificate (`CN=ceph-lab-gateway`) that names all three hosts and addresses. Open `https://192.168.56.11/`, `.12/` or `.13/` from the host computer. Follow the [dashboard guide](../how-to/dashboard.md). Do not expose MON or OSD ports.
 
-## Client capacity and HA evidence
+## Sources
 
-[HA/capacity explanation](../explanation/ha-and-capacity.md) covers shared pool space, thin provisioning and the 60 GiB combined logical budget. The [baseline finding](../../../knowledge/okf/findings/2026-11-05-production-baseline.md) records reboots of all tested hosts, a sustained node-03 outage and a hub reboot. Full VM power loss remains untested.
+- [Cephadm deployment requirements](https://docs.ceph.com/en/tentacle/cephadm/install/)
+- [Vagrant disks with VirtualBox](https://developer.hashicorp.com/vagrant/docs/disks/virtualbox/usage)
+- [Ceph-CSI project and compatibility information](https://github.com/ceph/ceph-csi)
+- [Ceph RBD with CSI](https://docs.ceph.com/en/tentacle/rbd/rbd-kubernetes/)

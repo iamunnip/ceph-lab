@@ -2,24 +2,25 @@
 
 A hands-on lab for learning Ceph on virtual machines and Kubernetes, including Rook.
 
-The VM track contains the deployment plan, observed inventory, pinned Ceph versions, and [live deployment evidence](vm/knowledge/okf/findings/2026-11-05-production-baseline.md). Kubernetes and Rook deployment tracks are planned for later.
+The VM track runs on Vagrant and VirtualBox. It contains the Vagrantfile, the manual deployment guide, observed inventory, pinned Ceph versions and [findings](vm/knowledge/okf/README.md). Ansible automation follows the manual install. Kubernetes and Rook deployment tracks are planned for later.
 
 ## Repository structure
 
 ```text
 vm/                  # Three-VM Ceph setup and dashboard
+  vagrant/           # Vagrantfile for the lab VMs
   docs/
     diataxis/        # Tutorials, how-to, reference and explanation
     adr/             # VM track decisions
     arc42/           # VM architecture
   knowledge/okf/     # Questions, facts and experiment findings
-  inventory/         # Example and observed host records
-  config/            # Pinned versions
+  inventory/         # Observed host records
+  config/            # Pinned versions and cephadm specs
 k8s/                 # Future Kubernetes track
 rook/                # Future Rook track
 ```
 
-The main walkthrough uses ordinary SSH and works with VMs from any provider; iximiuz Labs is an optional tested example.
+Create the VMs with `vagrant up` from `vm/vagrant/`, then follow the guides. They use the lab's real addresses and disk paths, so commands can be copied as they are.
 
 Start with the [VM plan](vm/README.md), [architecture](vm/docs/arc42/README.md), and [knowledge register](vm/knowledge/okf/README.md).
 See the [documentation guide](vm/docs/README.md) for how changes and experiment findings are recorded.

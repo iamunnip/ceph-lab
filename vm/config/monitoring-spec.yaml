@@ -27,10 +27,10 @@ placement:
   label: monitoring
   count: 1
 ---
+# One gateway on every host labeled gateway, so each storage VM serves the UI on port 443.
 service_type: mgmt-gateway
 placement:
   label: gateway
-  count: 1
 spec:
   port: 443
   ssl: true

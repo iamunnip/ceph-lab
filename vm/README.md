@@ -1,34 +1,38 @@
-# Ceph on three VMs
+# Ceph on three VMs with Vagrant
 
-Set up a Ceph cluster on three Linux VMs, use each VM's second disk for storage, and enable the Ceph Dashboard UI. Use VirtualBox, another local hypervisor, cloud VMs or iximiuz Labs.
+Set up a Ceph cluster on three VirtualBox VMs created by Vagrant, use each VM's data disk for storage, and enable the Ceph Dashboard. Two more VMs use the cluster's storage. Ceph is installed by hand first; Ansible automation comes later.
 
 ## Start here
 
-1. [Prepare three VMs](docs/diataxis/how-to/vm-preflight.md).
-2. [Deploy Ceph using SSH](docs/diataxis/how-to/deploy-vm-cluster.md).
-3. [Enable and open the dashboard](docs/diataxis/how-to/dashboard.md).
+1. [Create the VMs with Vagrant](docs/diataxis/how-to/create-vagrant-vms.md).
+2. [Check the VMs](docs/diataxis/how-to/vm-preflight.md).
+3. [Deploy Ceph by hand](docs/diataxis/how-to/deploy-vm-cluster.md).
+4. [Enable and open the dashboard](docs/diataxis/how-to/dashboard.md) at `https://192.168.56.11/`, `.12/` or `.13/`.
+5. [Fill the cluster and add the reserve disks](docs/diataxis/how-to/add-reserve-disks.md).
 
-For iximiuz Labs, use the [provider access guide](docs/diataxis/how-to/iximiuz-access.md), including `labctl expose port` for the UI. Other providers use the VM's reachable HTTPS address directly. Main guides use clearly labeled example addresses and disk paths; replace them with yours.
+## Machines
 
-## Required machines
+Every VM has 2 CPUs, 6 GB RAM and a 20 GB OS disk. All five together need 10 CPUs and 30 GB RAM.
 
-| Host | Purpose | Disks |
-| --- | --- | --- |
-| node-01 | MON, MGR, OSD and administration | OS disk + disposable data disk |
-| node-02 | MON, MGR, OSD, second administration host, monitoring and HTTPS gateway | OS disk + disposable data disk |
-| node-03 | MON, MGR and OSD | OS disk + disposable data disk |
+| Host | Address | Purpose | Extra disks |
+| --- | --- | --- | --- |
+| node-01 | 192.168.56.11 | MON, MGR, OSD and administration | 20 GB data `/dev/sdb`, 20 GB reserve `/dev/sdc` |
+| node-02 | 192.168.56.12 | MON, MGR, OSD, second administration host, monitoring and HTTPS gateway | same |
+| node-03 | 192.168.56.13 | MON, MGR and OSD | same |
+| node-04 | 192.168.56.14 | Normal VM using a Ceph block device (optional) | none |
+| node-05 | 192.168.56.15 | Single-node k3s using Ceph through CSI (optional) | none |
 
-The tested setup uses 4 vCPUs, about 10 GiB RAM, a 20 GiB OS disk and an 80 GiB second disk per VM. The second disk is dedicated to Ceph as a raw device, so it has no mount point; never select the OS disk. The cluster uses three replicas distributed across hosts, with a minimum of two for eligible I/O.
+`vagrant up` starts node-01 to node-03. Start the clients by name when you need them.
 
-Three VMs are sufficient for this core track. Native clients on node-04 and k3s/CSI on node-05 are implemented extensions below. CephFS and RGW remain later work. The storage cluster itself still requires only nodes 01–03.
+Both extra disks are for Ceph data. The data disk is the first OSD. The reserve disk stays empty until the cluster runs low on space, then becomes a second OSD on each host. The cluster uses three replicas across hosts, with a minimum of two for I/O: 60 GiB raw gives about 20 GiB usable at first, and 120 GiB raw about 40 GiB after adding the reserve disks.
 
 ## Consume storage and understand HA
 
-- [Capacity and Ceph HA](docs/diataxis/explanation/ha-and-capacity.md): 240 GiB raw, nominal 80 GiB with three replicas, approximately 76 GiB reported MAX AVAIL before client use.
-- [Normal VM on node-04](docs/diataxis/how-to/native-rbd-client.md): 10 GiB RBD volume mounted at /srv/cephdata, consumed by host nginx.
+- [Capacity and Ceph HA](docs/diataxis/explanation/ha-and-capacity.md).
+- [Normal VM on node-04](docs/diataxis/how-to/native-rbd-client.md): 5 GiB RBD volume mounted at /srv/cephdata, served by host nginx.
 - [k3s on node-05](docs/diataxis/how-to/k3s-rbd-client.md): Ceph-CSI, an explicit RBD StorageClass, a 5 GiB PVC and a persistent workload.
 
-The two consumers share capacity. Stored-data pool budgets are 20 GiB native and 40 GiB k3s; these are not additional physical space. RBD-NBD is used because kernel RBD failed on the tested kernel with current Ceph keys; upstream CSI labels NBD Alpha. Both clients' original local data disks remain untouched.
+The two consumers share capacity. Pool quotas are 6 GiB native and 10 GiB k3s; they are not extra physical space. Ceph storage HA is not application HA: each client is still a single VM, and all VMs run on one host computer.
 
 ## Documentation and records
 
@@ -36,34 +40,11 @@ All VM-specific documentation lives in [docs/](docs/README.md), and findings liv
 
 | File | Purpose |
 | --- | --- |
-| [inventory/example.json](inventory/example.json) | Generic three-host reference template |
-| [inventory/iximiuz.json](inventory/iximiuz.json) | Observed environment, including two reserved client VMs |
+| [vagrant/Vagrantfile](vagrant/Vagrantfile) | VMs, disks and addresses |
+| [inventory/vagrant.json](inventory/vagrant.json) | What the VMs reported when checked |
 | [config/versions.json](config/versions.json) | Pinned images and version record |
 | [config/cluster-spec.example.yaml](config/cluster-spec.example.yaml) | Hosts, labels, MON, MGR and OSD layout |
 | [config/monitoring-spec.yaml](config/monitoring-spec.yaml) | Monitoring stack and HTTPS gateway |
+## Current state
 
-These JSON records are optional when following the manual walkthrough. No custom validator or command wrapper is required.
-
-## Current deployment
-
-The current iximiuz deployment follows production practice where the infrastructure allows, but it is **not** production ready. [ADR 0010](docs/adr/0010-production-aligned-baseline.md) lists what is configured and each remaining gap, including the WireGuard hub on node-01, playground expiry and the absence of off-cluster backups. Measured results are in the [baseline finding](knowledge/okf/findings/2026-11-05-production-baseline.md).
-
-On node-01, check the cluster directly:
-
-```sh
-sudo cephadm shell -- ceph -s
-```
-
-```sh
-sudo cephadm shell -- ceph health detail
-```
-
-```sh
-sudo cephadm shell -- ceph osd tree
-```
-
-```sh
-sudo cephadm shell -- ceph orch ls
-```
-
-Expect HEALTH_OK, three MONs in quorum, three MGRs, three OSDs up and in, and all services at their expected counts. The [deployment guide](docs/diataxis/how-to/deploy-vm-cluster.md#verification-and-recovery) explains the output.
+The three storage VMs are created, upgraded and pass the preflight. The core cluster is deployed and `HEALTH_OK`: three MONs, three MGRs and three OSDs on the `/dev/sdb` data disks, 60 GiB raw. The reserve disks are untouched. The dashboard, monitoring and an HTTPS gateway on each storage VM run, and the UI opens at `https://192.168.56.11/`, `.12/` or `.13/` from the host computer. Prometheus, Alertmanager and Grafana are under `/prometheus/`, `/alertmanager/` and `/grafana/` on each address; the first two ask for the login from `ceph orch prometheus get-credentials`. Dashboard POST requests through the gateway can fail with `503 Keep on looking`; see [ADR 0011](docs/adr/0011-gateway-template-override.md). See the [VM finding](knowledge/okf/findings/2026-11-08-vagrant-vms.md). The target configuration follows production practice where a laptop lab allows, but it is **not** production ready; [ADR 0010](docs/adr/0010-production-aligned-baseline.md) lists the gaps.
