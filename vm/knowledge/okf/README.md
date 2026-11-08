@@ -1,65 +1,49 @@
 # Open questions, known facts and findings
 
-Updated: 2026-11-05. This register separates user-supplied facts, planned decisions, and observed evidence. Live inventory and initial deployment evidence are linked below.
+Updated: 2026-11-08. This register separates user-supplied facts, planned decisions, and observed evidence.
 
 ## Known facts
 
 | ID | Fact | Source |
 | --- | --- | --- |
-| K001 | Five iximiuz Labs VMs are available | User |
-| K002 | WireGuard hub-and-spoke setup is already complete; setup is out of scope | User |
-| K003 | Three storage VMs each have an additional 80 GB disk | User |
-| K004 | Two VMs are clients, including a service consumer and a k3s storage consumer | User |
+| K001 | The lab runs on Vagrant and VirtualBox on the user's computer: 12 CPU threads and about 40 GB RAM | User, 2026-11-08 |
+| K002 | Five VMs, each 2 CPUs and 6 GB RAM: node-01 to node-03 for Ceph, node-04 a normal VM using Ceph, node-05 for k3s | User, 2026-11-08; [Vagrantfile](../../vagrant/Vagrantfile) |
+| K003 | Each storage VM starts with one 20 GB data disk; a second 20 GB disk is added to Ceph later to simulate running low on space | User, 2026-11-08 |
+| K004 | Ceph is installed by hand first with plain manual commands only, one at a time, no scripts or loops; every command is recorded in the docs and later turned into Ansible | User, 2026-11-08 |
 | K005 | VM work comes first; docs and knowledge must remain updated | User |
 | K006 | Original repository code, configurations and documentation use the MIT License; third-party material retains its original terms | User-approved choice; [LICENSE](../../../LICENSE) |
-| K007 | Three-node Ceph baseline is HEALTH_OK; write/read and seven validator checks passed | [Deployment finding](findings/2026-11-05-vm-bootstrap.md) |
-| K008 | Use beginner-friendly documentation and direct Ceph commands; custom validator and shell wrapper removed at user request | User; [ADR 0006](../../docs/adr/0006-direct-cli-validation.md) |
-| K009 | Guides must work for readers using other VM platforms; standard SSH is the default and iximiuz access is optional | User; [ADR 0005](../../docs/adr/0005-provider-independent-guides.md) |
-| K010 | VM docs and knowledge belong under vm/; core setup needs three VMs, second disks and the dashboard; iximiuz UI access uses labctl expose | User; [ADR 0007](../../docs/adr/0007-vm-owned-docs-and-dashboard.md) |
-| K011 | Native node-04 and k3s node-05 consume separate RBD images from the same replicated capacity; combined logical pool budget is 60 GiB | [ADR 0008](../../docs/adr/0008-rbd-clients-and-capacity-budget.md) |
-| K012 | Standing approval to wipe `/dev/vdb` on iximiuz node-01 to node-03 for new deployments when all checks pass; no approval for any other disk, host or provider | User, 2026-11-05; [ADR 0009](../../docs/adr/0009-standing-disk-wipe-approval.md) |
-| K013 | Kernel RBD fails on kernel 6.1.167 with current Ceph keys (`libceph: secret too big 32`); RBD-NBD stays until the kernel changes | [Baseline finding](findings/2026-11-05-production-baseline.md) |
-| K014 | node-01 is the WireGuard hub; rebooting it also separates the other nodes from each other | [Baseline finding](findings/2026-11-05-production-baseline.md) |
-| K015 | Current deployment is production-aligned configuration on non-production infrastructure; gaps are listed in ADR 0010 | [ADR 0010](../../docs/adr/0010-production-aligned-baseline.md) |
+| K007 | Use beginner-friendly documentation and direct Ceph commands; no custom validators or wrappers | User; [ADR 0006](../../docs/adr/0006-direct-cli-validation.md) |
+| K008 | VM docs and knowledge belong under vm/; core setup needs three storage VMs, their data disks and the dashboard | User; [ADR 0007](../../docs/adr/0007-vm-owned-docs-and-dashboard.md) |
+| K009 | The OSD data disk gets no manual partitions or LVM; `ceph-volume` creates its own LVM on the raw disk | User, 2026-11-08; [deployment guide](../../docs/diataxis/how-to/deploy-vm-cluster.md#prepare-the-hosts) |
+| K010 | All three storage VMs pass the preflight: blank `sdb` and `sdc`, 20 GB OS disk, host-only network reachable | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| K011 | Vagrant deletes a disk removed from the Vagrantfile on the next reload | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| K012 | Vagrant VMs do not resolve each other's names; without `/etc/hosts` entries the mgmt-gateway fails with `host not found in upstream "node-01:8443"` | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| K013 | Core cluster, dashboard, monitoring and HTTPS gateway deployed by hand; `HEALTH_OK`; UI reachable at https://192.168.56.12/ from the host | [VM finding](findings/2026-11-08-vagrant-vms.md) |
 
 ## Open questions
 
 | ID | Question / evidence needed | Resolution stage |
 | --- | --- | --- |
-| Q001 | Resolved: observed inventory and synchronized storage-host clocks recorded | [Finding](findings/2026-11-05-vm-bootstrap.md) |
-| Q002 | Partial: healthy idle baseline on 4 vCPU/10024 MiB hosts, about 16 GiB root free; recovery and MDS resource budgets remain untested | Recovery experiments |
-| Q003 | Resolved for nodes 01–03: serials inspected, empty disks approved and provisioned as OSDs | [Finding](findings/2026-11-05-vm-bootstrap.md) |
-| Q004 | Partial: both clients reach all MON/OSD endpoints; mesh MTU measured at 1280; behavior under load and full firewall analysis remain open | Network/load experiments |
-| Q005 | Partial: Ceph/cephadm 20.2.5 and Podman 5.7.0 validated at baseline; k3s v1.36.6+k3s1 and Ceph-CSI 3.18.2 deployed | Client implementation |
-| Q006 | Partial: guest reboots preserve disks, identities and mesh addresses on all tested hosts; playground stop, start and expiry remain untested | Preflight |
-| Q007 | Resolved: kernel RBD tested and blocked by key size on 6.1.167; both clients load NBD; CSI privileged pods run with /var/lib/kubelet. Which kernel first accepts these keys remains open. | Client preflight |
-| Q008 | Partial: node-01 is the hub and a short reboot interrupts spoke-to-spoke traffic; effects of a long hub outage remain untested | Inventory; no WireGuard changes |
-| Q009 | Resolved: native nginx serves files from a 10 GiB Ceph image; remount persistence tested. | Native-client implementation |
+| Q001 | Resolved: VM resources, OS, kernel and time sync recorded | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| Q002 | Is 6 GB RAM enough per storage VM with two OSDs at 1.5 GiB each, plus MON, MGR and, on node-02, monitoring? | Reserve disk exercise |
+| Q003 | Resolved: data and reserve disks identified by SCSI port and confirmed blank | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| Q004 | Partial: all three MONs bind to 192.168.56.x; the gateway listens on 0.0.0.0:443, reachable only through the host-only network; OSD listeners still to check | Failure tests |
+| Q005 | Resolved for the core: Ceph 20.2.5, cephadm and Podman 5.7.0 run all daemons on this box, once host names resolve | [VM finding](findings/2026-11-08-vagrant-vms.md) |
+| Q006 | Partial: `vagrant reload node-03` kept disks, addresses, hostnames, the added `/etc/hosts` lines and all Ceph daemons; `vagrant halt` and `up` not tested | Failure tests |
+| Q007 | Does kernel RBD on 7.0.0-43 accept the 32-byte keys of this Ceph release, so RBD-NBD is not needed? | Native client |
+| Q008 | How long does backfill take after adding the reserve disks, and how much does node-02 memory rise? | Reserve disk exercise |
+| Q009 | Which Ansible layout and inventory turns the manual steps into repeatable automation? | After manual deployment |
 
 ## Decisions and implementation status
 
-Deployed: cephadm 20.2.5, three MONs, three MGRs, three OSDs, monitoring stack, HTTPS gateway, and size 3/min_size 2 host-replicated pools. Native RBD on node-04 and k3s RBD on node-05 are implemented extensions, not additional OSD hosts. CephFS remains deferred. [ADR 0010](../../docs/adr/0010-production-aligned-baseline.md) records the choices and gaps. Measured results are in the findings below.
-
-## Documentation portability
-
-The main VM guide now uses standard SSH, replaceable example values and fresh test-pool creation steps. A generic inventory template is available as a reference; manual commands do not require JSON inventory. iximiuz details remain in a provider guide and observed finding. See [ADR 0005](../../docs/adr/0005-provider-independent-guides.md). Validation: all seven checks passed against the existing cluster using explicit labctl transport. A mocked run verified ordinary SSH command construction with the generic inventory and all checks passed. Markdown links and shell syntax checks passed. Other providers are not live-tested yet. The transport tests above are historical: the custom validator and shell wrapper have since been removed. Current checks use direct Ceph CLI commands, as recorded in [ADR 0006](../../docs/adr/0006-direct-cli-validation.md).
-
-## Latest HA result
-
-With all node-03 Ceph services stopped, both clients wrote in under 0.25 s while all PGs were undersized, and HEALTH_OK returned 13 s after restoring services. A node-01 hub reboot caused one 27 s client write stall and no errors. This is not a power-loss or application-failover claim. See the [baseline finding](findings/2026-11-05-production-baseline.md).
+Created and checked: node-01 to node-03 from the Vagrantfile, upgraded to current packages and kernel 7.0.0-43. Bootstrapped on node-01 with cephadm 20.2.5: fsid 81c36e54-db79-11f1-9a8b-08002739f937, public network 192.168.56.0/24. Deployed from the cluster spec: three MONs, three MGRs, three OSDs on `/dev/sdb`, `HEALTH_OK`, 60 GiB raw. Also deployed: node-02 as second admin host, dashboard with `admin` user, monitoring stack and HTTPS gateway on node-02, `lab-smoke` pool with a passed write and read test. Planned: the reserve disk exercise, a node-01 failover test, the two clients and Ansible. [ADR 0009](../../docs/adr/0009-vagrant-virtualbox-lab.md) records the platform choice and [ADR 0010](../../docs/adr/0010-production-aligned-baseline.md) the target configuration and its gaps.
 
 ## Findings
 
-- [2026-11-05: Production-aligned redeployment and failure tests](findings/2026-11-05-production-baseline.md). Current deployment; the findings below describe the earlier playgrounds.
-
-- [2026-11-05: HA, capacity and native/k3s clients](findings/2026-11-05-client-storage.md).
-
-- [2026-11-05: Dashboard enablement and exposure](findings/2026-11-05-dashboard.md).
-
-- [2026-11-05: VM inventory and cluster deployment](findings/2026-11-05-vm-bootstrap.md) (healthy baseline and write/read test passed).
+- [2026-11-08: Vagrant VMs created and checked](findings/2026-11-08-vagrant-vms.md).
 
 Add a finding per experiment with: ID/date; linked question or hypothesis; exact versions/topology; procedure; expected and actual result; sanitized evidence; limitations; recovery result; and documentation/decision changes. Mark failed and inconclusive experiments honestly. Never store credentials in evidence.
 
 ## Local credential files
 
-The repository ignores local inventories, environment files, cloud/Kubernetes credentials, Ceph keyrings, private-key/PEM files and runtime logs. Example environment files remain trackable. These rules reduce accidental additions; review staged files for secrets before committing. Existing tracked files are not protected by ignore patterns.
+The repository ignores local inventories, environment files, cloud/Kubernetes credentials, Ceph keyrings, private-key/PEM files, runtime logs and Vagrant machine state. Example environment files remain trackable. These rules reduce accidental additions; review staged files for secrets before committing. Existing tracked files are not protected by ignore patterns.

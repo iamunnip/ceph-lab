@@ -8,7 +8,7 @@ The initial baseline used a Python validator and a shell wrapper. The current le
 
 ## Decision
 
-Remove both custom scripts. Keep direct Ceph CLI commands, explanations and expected results in the [deployment guide](../diataxis/how-to/deploy-vm-cluster.md#verification-and-recovery). Preserve previous test results as historical evidence. Inventory and pinned-version JSON files remain reference records and are not prerequisites for the manual walkthrough.
+Remove both custom scripts. Keep direct Ceph CLI commands, explanations and expected results in the [deployment guide](../diataxis/how-to/deploy-vm-cluster.md#verification-and-recovery). Inventory and pinned-version JSON files remain reference records and are not prerequisites for the manual walkthrough.
 
 ## Consequences
 

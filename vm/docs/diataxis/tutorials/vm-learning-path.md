@@ -1,14 +1,16 @@
 # VM learning path
 
-Status: curriculum plan; executable walkthroughs will be added with implementation.
+Status: VMs created and checked on 2026-11-08. The Ceph lessons are planned.
 
-1. Inventory the three-VM lab on your chosen platform and explain which disks can be used safely.
-2. Deploy three-host Ceph with cephadm and inspect MON quorum, MGR roles, OSD placement, pools and CRUSH.
-3. Enable the Ceph dashboard and open its HTTPS URL; inspect hosts, OSDs and health.
-4. As an optional later extension, use an RBD image from a native Linux service. Write a known dataset and prove persistence across remount and reboot.
-5. Connect single-node k3s to external Ceph using Ceph-CSI. Provision a PVC with an explicit Ceph StorageClass and prove persistence across pod recreation.
-6. Add CephFS and compare shared filesystem access with RBD block storage.
-7. Observe a controlled failure, explain the health output, recover the failed component and verify the original data.
-8. Capture diagnostics and rehearse a documented cleanup in a disposable lab.
+1. [Create the five VMs with Vagrant](../how-to/create-vagrant-vms.md) and explain which disks Ceph may use.
+2. [Check the VMs](../how-to/vm-preflight.md) before installing anything.
+3. [Deploy three-host Ceph by hand with cephadm](../how-to/deploy-vm-cluster.md). Inspect MON quorum, MGR roles, OSD placement, pools and CRUSH.
+4. [Enable the Ceph dashboard](../how-to/dashboard.md) and open it from your computer; inspect hosts, OSDs and health.
+5. [Fill the cluster until it warns about low space, then add the reserve disks](../how-to/add-reserve-disks.md) and watch backfill.
+6. Use an RBD image from a [normal Linux VM](../how-to/native-rbd-client.md) on node-04. Write a known dataset and prove persistence across remount and reboot.
+7. Connect [single-node k3s](../how-to/k3s-rbd-client.md) on node-05 to Ceph using Ceph-CSI. Prove persistence across pod recreation.
+8. Automate steps 3 to 5 with Ansible, once the manual steps are verified.
+9. Add CephFS and compare shared filesystem access with RBD block storage.
+10. Observe a controlled failure, for example `vagrant halt node-03`, explain the health output, recover and verify the original data.
 
-Each implemented lesson must include prerequisites, pinned artifacts, commands, expected output, success criteria, recovery and linked experiment evidence. Complete the validation matrix before calling the VM track tested.
+Each lesson must include prerequisites, pinned artifacts, commands, expected output, success criteria, recovery and linked evidence. Complete the validation matrix before calling the VM track tested.

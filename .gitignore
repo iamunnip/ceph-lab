@@ -29,3 +29,6 @@ ceph-dashboard-user-create.log
 # Local runtime output
 *.log
 *.pid
+
+# Vagrant machine state
+.vagrant/

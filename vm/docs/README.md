@@ -14,19 +14,17 @@ For every meaningful change, update the affected guides/reference and the knowle
 
 ## Index
 
-- [Production-aligned baseline decision](adr/0010-production-aligned-baseline.md)
-- [Ceph HA and usable capacity](diataxis/explanation/ha-and-capacity.md)
+- [VM learning path](diataxis/tutorials/vm-learning-path.md)
+- [Create the VMs with Vagrant](diataxis/how-to/create-vagrant-vms.md)
+- [Preflight checks](diataxis/how-to/vm-preflight.md)
+- [Deploy Ceph by hand](diataxis/how-to/deploy-vm-cluster.md)
+- [Enable and access the dashboard](diataxis/how-to/dashboard.md)
+- [Fill the cluster and add the reserve disks](diataxis/how-to/add-reserve-disks.md)
 - [Native VM RBD client](diataxis/how-to/native-rbd-client.md)
 - [k3s RBD client](diataxis/how-to/k3s-rbd-client.md)
-
-- [Enable and access the dashboard](diataxis/how-to/dashboard.md)
-
-- [VM learning path](diataxis/tutorials/vm-learning-path.md)
-- [Preflight procedure](diataxis/how-to/vm-preflight.md)
-- [Optional iximiuz access](diataxis/how-to/iximiuz-access.md)
-- [VM cluster deployment](diataxis/how-to/deploy-vm-cluster.md)
 - [VM lab reference](diataxis/reference/vm-lab.md)
 - [Validation matrix](diataxis/reference/vm-validation.md)
 - [Design explanation](diataxis/explanation/vm-design.md)
+- [Ceph HA and usable capacity](diataxis/explanation/ha-and-capacity.md)
 - [Decisions](adr/README.md)
 - [Architecture](arc42/README.md)

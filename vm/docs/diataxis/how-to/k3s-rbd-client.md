@@ -1,8 +1,12 @@
 # Consume external Ceph storage from single-node k3s
 
-Node-05 runs k3s and Ceph-CSI. Ceph itself remains on nodes 01–03; Rook is not used in this exercise. A 5 GiB PVC backs an nginx workload. Node-05's local second disk is untouched and is not added to Ceph.
+Node-05 runs k3s and Ceph-CSI. Ceph itself remains on nodes 01 to 03; Rook is not used in this exercise. A 5 GiB PVC backs an nginx workload. node-05 has no extra disk; the storage comes from Ceph.
 
-Examples use storage IPs 192.168.50.11–13 and k3s IP 192.168.50.15. Replace them with your addresses. The pinned [Ceph-CSI 3.18.2 matrix](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/README.md) includes Kubernetes 1.36. This walkthrough uses k3s v1.36.6+k3s1 and Helm v3.19.0.
+Examples use the Vagrant lab values: storage nodes 192.168.56.11 to 13 and k3s node-05 at 192.168.56.15. Start node-05 first from `vm/vagrant/` on your computer with `vagrant up node-05`.
+
+Status: planned. Not run on the Vagrant lab yet.
+
+ The pinned [Ceph-CSI 3.18.2 matrix](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/README.md) includes Kubernetes 1.36. This walkthrough uses k3s v1.36.6+k3s1 and Helm v3.19.0.
 
 ## Prepare the pool on node-01
 
@@ -27,10 +31,10 @@ sudo cephadm shell -- ceph osd pool set k3s-rbd target_size_ratio 0.5
 ```
 
 ```sh
-sudo cephadm shell -- ceph osd pool set-quota k3s-rbd max_bytes 42949672960
+sudo cephadm shell -- ceph osd pool set-quota k3s-rbd max_bytes 10737418240
 ```
 
-The quota limits stored logical data to 40 GiB. It shares physical capacity with the native pool and other pools; it does not reserve extra disks.
+The quota limits stored logical data to 10 GiB. It shares physical capacity with the native pool and other pools; it does not reserve extra disks.
 
 Create the pool-scoped identity. Output is discarded so the key is not displayed:
 
@@ -50,7 +54,13 @@ sudo cephadm shell -- ceph fsid
 
 Skip installation if an appropriate k3s cluster already exists. Inspect its version, kubelet directory and networking before adapting the CSI settings.
 
-Copy [k3s-config.example.yaml](../../../clients/k3s/k3s-config.example.yaml) to node-05 as `/tmp/k3s-config.yaml`. Replace the example address and set `flannel-iface` to the interface holding that address. The iximiuz deployment uses `10.8.0.5` and `mesh0`. The file turns on three things worth knowing:
+Copy [k3s-config.example.yaml](../../../clients/k3s/k3s-config.example.yaml) to node-05 as `/tmp/k3s-config.yaml`. From `vm/vagrant/` on your computer:
+
+```sh
+vagrant upload ../clients/k3s/k3s-config.example.yaml /tmp/k3s-config.yaml node-05
+```
+
+ It already uses node-05's host-only address 192.168.56.15 and interface `enp0s8`. Without `flannel-iface`, k3s would pick the NAT card, whose address 10.0.2.15 is the same on every VM. The file turns on three things worth knowing:
 
 - `secrets-encryption` encrypts Kubernetes Secrets at rest, including the Ceph key.
 - `cluster-init` uses embedded etcd, which takes scheduled snapshots and lets you add servers later.
@@ -106,7 +116,7 @@ printf 'options nbd nbds_max=16\n' | sudo tee /etc/modprobe.d/ceph-nbd.conf
 printf 'nbd\n' | sudo tee /etc/modules-load.d/ceph-nbd.conf
 ```
 
-The kernel mounter is the production recommendation, but it fails on our tested kernel 6.1.167, see the [native guide](native-rbd-client.md#install-a-compatible-mapper-on-node-04). This guide therefore sets `mounter: rbd-nbd`, which upstream labels [Alpha](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/docs/design/proposals/rbd-nbd.md). On a kernel that accepts current Ceph keys, remove that line from the StorageClass before creating volumes.
+The kernel mounter is the production recommendation, but older kernels cannot load current Ceph keys, see the [native guide](native-rbd-client.md#install-a-compatible-mapper-on-node-04). The example StorageClass therefore sets `mounter: rbd-nbd`, which upstream labels [Alpha](https://raw.githubusercontent.com/ceph/ceph-csi/v3.18.2/docs/design/proposals/rbd-nbd.md). If kernel RBD worked on node-04 with the same kernel, remove that line from the StorageClass before creating volumes.
 
 ## Install pinned Helm and chart on node-05
 
@@ -125,7 +135,7 @@ Helm checksum verification must say OK. The chart checksum must be `62e0c93615a6
 
 ## Configure and install CSI
 
-Copy the three files in [clients/k3s](../../../clients/k3s/) to node-05. Edit `values.example.yaml`: replace the FSID placeholder and all three monitor addresses. Confirm the actual kubelet directory is `/var/lib/kubelet` before retaining that value. Edit `storageclass.example.yaml` with the same FSID. No secrets belong in either file.
+Copy the files in [clients/k3s](../../../clients/k3s/) to node-05, for example from `vm/vagrant/` on your computer with `vagrant upload ../clients/k3s /home/vagrant/k3s node-05`. Edit `values.example.yaml`: replace the FSID placeholder. The monitor addresses already match the Vagrant lab. Confirm the actual kubelet directory is `/var/lib/kubelet` before retaining that value. Edit `storageclass.example.yaml` with the same FSID. No secrets belong in either file.
 
 On node-05, create the namespace. CSI node plugins need privileged host access to mount volumes:
 
@@ -137,10 +147,10 @@ sudo k3s kubectl create namespace ceph-csi
 sudo k3s kubectl label namespace ceph-csi pod-security.kubernetes.io/enforce=privileged
 ```
 
-Create the Secret. Run this on **your own computer**, using your own SSH access. It pipes the key directly from node-01 into Kubernetes, so the key is never written to a file or displayed. iximiuz users replace each `ssh` with `labctl ssh PLAYGROUND_ID --`:
+Create the Secret. Run this on **your computer**, from `vm/vagrant/`. It pipes the key directly from node-01 into Kubernetes, so the key is never written to a file or displayed:
 
 ```sh
-ssh ubuntu@192.168.50.11 'sudo cephadm shell -- ceph auth get-key client.k3s 2>/dev/null' | ssh ubuntu@192.168.50.15 'sudo k3s kubectl -n ceph-csi create secret generic ceph-rbd-client --from-literal=userID=k3s --from-file=userKey=/dev/stdin'
+vagrant ssh node-01 -c 'sudo cephadm shell -- ceph auth get-key client.k3s 2>/dev/null' | vagrant ssh node-05 -c 'sudo k3s kubectl -n ceph-csi create secret generic ceph-rbd-client --from-literal=userID=k3s --from-file=userKey=/dev/stdin'
 ```
 
 Expect `secret/ceph-rbd-client created`.
@@ -172,19 +182,41 @@ Expect a Bound 5 GiB PVC and a Ready pod. The response should say `Persistent Ce
 
 ## Prove persistence
 
-Create a unique marker, delete only the pod, and check the replacement pod:
+On node-05, write a marker file into the volume. `exec -i` passes your input to `tee` inside the pod, which writes it to the file:
 
 ```sh
-sudo k3s kubectl -n ceph-demo exec deployment/ceph-web -- sh -c 'printf "my-persistent-marker\n" > /usr/share/nginx/html/persistence.txt; sha256sum /usr/share/nginx/html/persistence.txt'
+printf 'my-persistent-marker\n' | sudo k3s kubectl -n ceph-demo exec -i deployment/ceph-web -- tee /usr/share/nginx/html/persistence.txt
+```
+
+Expect `my-persistent-marker` echoed back. Record its checksum:
+
+```sh
+sudo k3s kubectl -n ceph-demo exec deployment/ceph-web -- sha256sum /usr/share/nginx/html/persistence.txt
+```
+
+Delete only the pod. The deployment creates a new one, which attaches the same volume:
+
+```sh
 sudo k3s kubectl -n ceph-demo delete pod -l app=ceph-web
+```
+
+```sh
 sudo k3s kubectl -n ceph-demo rollout status deployment/ceph-web --timeout=120s
+```
+
+Check the file in the new pod:
+
+```sh
 sudo k3s kubectl -n ceph-demo exec deployment/ceph-web -- cat /usr/share/nginx/html/persistence.txt
+```
+
+```sh
 sudo k3s kubectl -n ceph-demo exec deployment/ceph-web -- sha256sum /usr/share/nginx/html/persistence.txt
 ```
 
 Expect the same marker and checksum. Keep the PVC: deleting a pod is different from deleting its storage claim. This class uses Retain, so deleting a PVC does not automatically destroy the underlying image; reclaiming it requires an explicit storage lifecycle procedure.
 
-The test proves persistence across pod recreation, not Kubernetes node failover. With one k3s VM, application/node HA is outside this setup. Ceph-side HA and observed results are explained in the [capacity guide](../explanation/ha-and-capacity.md) and [client finding](../../../knowledge/okf/findings/2026-11-05-client-storage.md).
+The test proves persistence across pod recreation, not Kubernetes node failover. With one k3s VM, application/node HA is outside this setup. Ceph-side HA and observed results are explained in the [capacity guide](../explanation/ha-and-capacity.md).
 
 ## Back up the Kubernetes datastore
 

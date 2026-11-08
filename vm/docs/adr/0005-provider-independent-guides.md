@@ -1,31 +1,19 @@
-# 0005: Make VM guides independent of the provider
+# 0005: Use Vagrant lab values in the guides, with ordinary SSH between VMs
 
-Status: accepted. Date: 2026-11-05.
+Status: accepted. Date: 2026-11-05, revised 2026-11-08.
 
 ## Context
 
-The first deployment used iximiuz Labs and labctl. The project is intended for everyone with suitable Linux VMs, including readers using other platforms. Main guides previously embedded our playground ID, SSH account and mesh addresses and assumed that the test pool already existed.
+Readers should be able to copy and paste each command. Guides full of placeholders are harder to follow, while every reader can create the same VMs from the Vagrantfile.
 
 ## Decision
 
-Use standard SSH and clearly labeled example hostnames, addresses, usernames and disk paths in the main VM guide. Explain substitutions and prerequisites. Keep provider provisioning and network setup outside the deployment steps; require existing routed connectivity without requiring WireGuard.
+Main guides use the Vagrant lab's real values: user `vagrant`, addresses 192.168.56.11 to 15, data disk `/dev/sdb`, reserve disk `/dev/sdc`. Readers connect with `vagrant ssh` and copy files with `vagrant upload`. Ceph itself uses ordinary SSH between the VMs, as cephadm requires. Each guide says once which values to change if the VMs come from somewhere else.
 
-Keep iximiuz access details in an optional provider guide and preserve observed deployment inventory/findings as evidence. Provide a generic JSON inventory template. Require the validator's inventory argument and default its transport to SSH, with an explicit labctl option. Private local inventory is ignored by Git. Ubuntu package commands are labeled as distribution-specific rather than claimed to work on every Linux distribution.
-
-Walkthroughs identify the execution host, explain commands and expected output, and include creation of resources needed for a fresh run. Python validators remain allowed.
+Walkthroughs identify the VM that runs each command, explain commands and expected output, and include creation of resources needed for a fresh run. Ubuntu package commands are labeled as distribution-specific.
 
 ## Consequences
 
-Readers need neither an iximiuz account nor labctl to follow the main guide. They must supply VMs, suitable disposable disks, supported host software and working networking. Other providers have not been live-tested by this change; portability is supported by the documented contract and SSH transport, not a claim of validation on every platform.
+Vagrant readers can follow the guides without edits. Readers on other platforms must supply VMs with equivalent disks and networking and substitute their values. Other platforms are not tested.
 
-This refines [ADR 0004](0004-vm-deployment-baseline.md): its concrete deployment choices remain historical evidence, while its provider-specific access is no longer the default reader path.
-
-## References
-
-- [Main guide](../diataxis/how-to/deploy-vm-cluster.md)
-- [Optional iximiuz access](../diataxis/how-to/iximiuz-access.md)
-- [Generic inventory](../../inventory/example.json)
-
-## Follow-up
-
-[ADR 0006](0006-direct-cli-validation.md) supersedes the custom-validator decisions above. The scripts have been removed; current walkthroughs use direct Ceph CLI commands.
+See [ADR 0006](0006-direct-cli-validation.md) for verification without custom scripts.

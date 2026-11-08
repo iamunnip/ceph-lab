@@ -16,4 +16,4 @@ Kubernetes storage integration can be learned independently of Rook. Single-node
 
 ## Scope follow-up
 
-[ADR 0007](0007-vm-owned-docs-and-dashboard.md) moves VM docs/knowledge under the VM track, makes client stages optional extensions, and enables the dashboard in the three-host core setup. Earlier deployment observations remain historical evidence.
+[ADR 0007](0007-vm-owned-docs-and-dashboard.md) moves VM docs/knowledge under the VM track, makes client stages optional extensions, and enables the dashboard in the three-host core setup.

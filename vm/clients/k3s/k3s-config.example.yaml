@@ -1,9 +1,9 @@
 # Install as /etc/rancher/k3s/config.yaml before running the k3s installer.
 # Replace the address and interface with the k3s VM's reachable values.
 node-name: node-05
-node-ip: 192.168.50.15
-advertise-address: 192.168.50.15
-flannel-iface: eth1
+node-ip: 192.168.56.15
+advertise-address: 192.168.56.15
+flannel-iface: enp0s8
 # Embedded etcd gives scheduled snapshots and a path to add servers later.
 cluster-init: true
 # Encrypts Kubernetes Secrets at rest, including the Ceph client key.
