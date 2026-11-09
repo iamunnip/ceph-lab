@@ -1,0 +1,84 @@
+# Read only. Checks that the cluster has exactly the layout of the
+# inventory, by name and place, not only by count:
+#   - the monitors in quorum are exactly the ceph_mon hosts
+#   - a running manager on each ceph_mgr host and on no other host
+#   - every OSD is up and in
+#   - each ceph_osd host has one OSD on each disk in ceph_osd_devices, and
+#     no OSD sits anywhere else (so the reserve disks stay unused until
+#     ceph_reserve_devices_in_ceph is true)
+# Manual: deploy-vm-cluster.md, "Apply the cluster layout" (ceph osd tree,
+# ceph orch ps) and "Check the layout by name".
+
+- name: Read the monitors in quorum (ceph quorum_status)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph quorum_status -f json"
+  register: install_topo_quorum
+  changed_when: false
+
+# cephadm caches daemon states. Right after a manager restart the cached
+# list can show a healthy manager as not running, so ask for a fresh list
+# (--refresh) and wait until the running managers match ceph_mgr. The wait
+# is bounded (ceph_wait_retries x ceph_wait_delay, 10 minutes); if the
+# managers never match, this task fails and stops the run.
+- name: Wait until a running manager is on exactly the ceph_mgr hosts (ceph orch ps --refresh)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph orch ps --refresh -f json"
+  register: install_topo_ps
+  changed_when: false
+  until: >-
+    install_topo_ps.rc == 0
+    and (install_topo_ps.stdout | from_json
+    | selectattr('daemon_type', 'equalto', 'mgr')
+    | selectattr('status_desc', 'equalto', 'running')
+    | map(attribute='hostname') | sort) == groups['ceph_mgr'] | sort
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"
+
+- name: Read the up and in state of every OSD (ceph osd dump)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph osd dump -f json"
+  register: install_topo_osd_dump
+  changed_when: false
+
+- name: Read the host and disk of every OSD (ceph osd metadata)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph osd metadata -f json"
+  register: install_topo_osd_metadata
+  changed_when: false
+
+- name: Stop if the cluster layout differs from the inventory
+  ansible.builtin.assert:
+    that:
+      - install_topo_mons == groups['ceph_mon'] | sort
+      - install_topo_mgrs == groups['ceph_mgr'] | sort
+      - install_topo_osds_not_up_in | length == 0
+      - install_topo_osd_places == install_topo_expected_places
+    fail_msg: >-
+      The cluster layout differs from the inventory.
+      Monitors in quorum: {{ install_topo_mons }}, expected {{ groups['ceph_mon'] | sort }}.
+      Running managers on: {{ install_topo_mgrs }}, expected {{ groups['ceph_mgr'] | sort }}.
+      OSDs not up and in: {{ install_topo_osds_not_up_in }}.
+      OSDs on host:disk: {{ install_topo_osd_places }}, expected {{ install_topo_expected_places }}.
+    success_msg: >-
+      Monitors {{ install_topo_mons | join(', ') }}; managers on
+      {{ install_topo_mgrs | join(', ') }}; OSDs up and in on
+      {{ install_topo_osd_places | join(', ') }}.
+  vars:
+    install_topo_mons: "{{ (install_topo_quorum.stdout | from_json).quorum_names | sort }}"
+    install_topo_mgrs: >-
+      {{ install_topo_ps.stdout | from_json
+      | selectattr('daemon_type', 'equalto', 'mgr')
+      | selectattr('status_desc', 'equalto', 'running')
+      | map(attribute='hostname') | sort }}
+    install_topo_osds_not_up_in: >-
+      {{ (install_topo_osd_dump.stdout | from_json).osds
+      | rejectattr('up', 'equalto', 1) | map(attribute='osd') | list
+      + (install_topo_osd_dump.stdout | from_json).osds
+      | rejectattr('in', 'equalto', 1) | map(attribute='osd') | list }}
+    # "node-01:sdb" for each OSD, from the host and disk Ceph reports.
+    install_topo_osd_places: >-
+      {%- set places = [] -%}
+      {%- for osd in install_topo_osd_metadata.stdout | from_json -%}
+        {%- set _ = places.append(osd.hostname ~ ':' ~ osd.devices) -%}
+      {%- endfor -%}
+      {{ places | sort }}
+    install_topo_expected_places: >-
+      {{ groups['ceph_osd']
+      | product(ceph_osd_devices | map('basename'))
+      | map('join', ':') | sort }}

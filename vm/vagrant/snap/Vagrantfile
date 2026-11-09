@@ -34,6 +34,11 @@
 # It is the official Ubuntu 26.04 cloud image, packaged for Vagrant.
 BOX = "cloud-image/ubuntu-26.04"
 
+# The exact box version this lab was tested with. Vagrant uses only this
+# version, so a new release of the box cannot change the VMs. It matches
+# vagrant_box in configs/podman/versions.yml. Change it only after testing.
+BOX_VERSION = "20260927.0.0"
+
 # Prefix of the VM names in VirtualBox, so you can tell the two tracks apart.
 VM_PREFIX = "ceph-lab-snap-"
 
@@ -61,6 +66,7 @@ NODES = [
 
 Vagrant.configure("2") do |config|
   config.vm.box = BOX
+  config.vm.box_version = BOX_VERSION
 
   # We do not need the shared /vagrant folder inside the VMs.
   config.vm.synced_folder ".", "/vagrant", disabled: true

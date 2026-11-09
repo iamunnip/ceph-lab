@@ -1,0 +1,32 @@
+# Podman install method only. Read only: checks that the pinned cephadm is
+# installed and that the host meets its requirements (cephadm check-host
+# stops the run if it fails). Used by podman.yml after the download, and by
+# precheck.yml before the install stage.
+# Manual: deploy-vm-cluster.md, "Install cephadm on node-01".
+
+- name: Read the cephadm version (cephadm version)
+  ansible.builtin.command: "{{ cephadm_path }} version"
+  register: setup_cephadm_version
+  changed_when: false
+  failed_when: false
+
+- name: Stop if cephadm is missing or not the pinned version and commit
+  ansible.builtin.assert:
+    that:
+      - setup_cephadm_version.rc == 0
+      - setup_cephadm_version.stdout is search('cephadm version ' ~ cephadm_version ~ ' \(' ~ cephadm_commit ~ '\)')
+    fail_msg: >-
+      {{ cephadm_path }} on {{ inventory_hostname }} is missing or not
+      cephadm {{ cephadm_version }} ({{ cephadm_commit }}). Found:
+      "{{ setup_cephadm_version.stdout | default('') }}{{ setup_cephadm_version.msg | default('') }}".
+      Run the setup stage first: ansible-playbook site.yml --tags setup
+    quiet: true
+
+- name: Check that the host meets cephadm's requirements (cephadm check-host)
+  ansible.builtin.command: "{{ cephadm_path }} check-host"
+  register: setup_check_host
+  changed_when: false
+
+- name: Show the check-host result
+  ansible.builtin.debug:
+    msg: "{{ (setup_check_host.stdout_lines + setup_check_host.stderr_lines) | select | list }}"

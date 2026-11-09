@@ -1,17 +1,17 @@
 # Manual: dashboard.md, "Give the gateways one certificate for all three addresses".
 # cephadm's own gateway certificate covers only the first gateway host.
 # This replaces it with one that names every gateway host and address.
+#
+# A new certificate is made when any gateway serves one that is missing,
+# has another common name, expires within ceph_gateway_cert_min_days, lacks
+# a gateway name or address, or differs from the others. Afterwards every
+# gateway must serve the new certificate, and all checks must pass.
 
-- name: Read the certificate the first gateway serves now (openssl s_client)
-  ansible.builtin.command:
-    cmd: openssl s_client -connect {{ hostvars[groups['ceph_gateway'][0]].ansible_host }}:{{ ceph_gateway_port }}
-    stdin: "" # close the connection right after the handshake
-  register: install_gateway_served
-  changed_when: false
-  failed_when: false
+- name: Read and check the certificate every gateway serves now
+  ansible.builtin.include_tasks: gateway_cert_read.yml
 
 - name: Make and store the shared gateway certificate
-  when: install_gateway_served.stdout is not search('subject=.*CN ?= ?' ~ ceph_gateway_cert_cn)
+  when: install_gateway_cert_state.problems | length > 0
   block:
     - name: Create a working folder only root can open
       ansible.builtin.file:
@@ -30,6 +30,11 @@
         -subj /CN={{ ceph_gateway_cert_cn }}
         -addext subjectAltName={{ ceph_gateway_cert_san }}
       changed_when: true
+
+    - name: Keep the new certificate to compare with what the gateways serve (it is public)
+      ansible.builtin.slurp:
+        src: "{{ ceph_gateway_cert_dir }}/gw.crt"
+      register: install_gateway_new_cert
 
     - name: Store the certificate in cephadm's cert store (ceph orch certmgr cert set)
       ansible.builtin.command: >-
@@ -56,14 +61,32 @@
       ansible.builtin.command: "{{ cephadm_path }} shell -- ceph orch restart mgmt-gateway"
       changed_when: true
 
-- name: Wait until every gateway serves the shared certificate, can take minutes (openssl s_client)
-  ansible.builtin.command:
-    cmd: openssl s_client -connect {{ hostvars[item].ansible_host }}:{{ ceph_gateway_port }}
-    stdin: ""
-  loop: "{{ groups['ceph_gateway'] }}"
-  register: install_gateway_check
-  changed_when: false
-  failed_when: false
-  until: install_gateway_check.stdout is search('subject=.*CN ?= ?' ~ ceph_gateway_cert_cn)
-  retries: "{{ ceph_wait_retries }}"
-  delay: "{{ ceph_wait_delay }}"
+    - name: Wait until every gateway serves the new certificate, can take minutes (openssl s_client)
+      ansible.builtin.command:
+        cmd: openssl s_client -connect {{ hostvars[item].ansible_host }}:{{ ceph_gateway_port }}
+        stdin: ""
+      loop: "{{ groups['ceph_gateway'] }}"
+      register: install_gateway_check
+      changed_when: false
+      failed_when: false
+      until: >-
+        (install_gateway_check.stdout
+        | regex_search('-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----')
+        | default('', true) | trim)
+        == (install_gateway_new_cert.content | b64decode | trim)
+      retries: "{{ ceph_wait_retries }}"
+      delay: "{{ ceph_wait_delay }}"
+
+- name: Read and check the certificate every gateway serves after the change
+  ansible.builtin.include_tasks: gateway_cert_read.yml
+
+- name: Stop if a gateway certificate is missing, expiring, wrongly named, incomplete or not shared
+  ansible.builtin.assert:
+    that:
+      - install_gateway_cert_state.problems | length == 0
+    fail_msg: "Gateway certificate problems: {{ install_gateway_cert_state.problems | join('; ') }}"
+    success_msg: >-
+      All {{ groups['ceph_gateway'] | length }} gateways serve one certificate
+      ({{ install_gateway_cert_state.fingerprints | first }}), CN={{ ceph_gateway_cert_cn }},
+      valid for at least {{ ceph_gateway_cert_min_days }} more days, covering
+      {{ ceph_gateway_cert_expected_san | join(', ') }}.

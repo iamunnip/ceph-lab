@@ -2,7 +2,7 @@
 
 This guide runs the [manual deployment](deploy-vm-cluster.md) and the [dashboard setup](dashboard.md) as one Ansible playbook, with the install method `podman`. Every task in it comes from a command in those guides, and each task name says which command it runs. Read the manual guide first, so you know what each stage does.
 
-Status: tested. On 2026-11-09, with ansible-core 2.22.0, the playbook built the cluster on new VMs (`failed=0`, `HEALTH_OK`), a second run reported `changed=0` on every VM, and a run on a cluster built by hand changed nothing in Ceph. See the [finding](../../findings/2026-11-09-end-to-end.md). Its generated layout files match [cluster-spec.example.yaml](../../../../configs/podman/cluster-spec.example.yaml) and [monitoring-spec.yaml](../../../../configs/podman/monitoring-spec.yaml) apart from the header comment.
+Status: tested. On 2026-11-09, with ansible-core 2.22.0, the playbook built the cluster on new VMs (`failed=0`, `HEALTH_OK`), a second run reported `changed=0` on every VM, and a run on a cluster built by hand changed nothing in Ceph. See the [finding](../../findings/2026-11-09-end-to-end.md). The stronger checks (install-stage precheck, per-LV disk ownership, full gateway certificate check, layout by name) were tested the same day on new VMs: first run `failed=0`, second run and `--tags install` alone `changed=0`, see the [stronger-checks finding](../../findings/2026-11-09-stronger-checks.md). Its generated layout files match [cluster-spec.example.yaml](../../../../configs/podman/cluster-spec.example.yaml) and [monitoring-spec.yaml](../../../../configs/podman/monitoring-spec.yaml) apart from the header comment.
 
 ## What the playbook does
 
@@ -13,7 +13,8 @@ Status: tested. On 2026-11-09, with ansible-core 2.22.0, the playbook built the 
 | 0 | none | your computer | Check that `ceph_install_method` is `podman` or `snap`, load `vars/podman.yml` | |
 | 1 | `prereq` | node-01 to node-03 | `apt-get update`, then install `podman lvm2 curl python3 chrony logrotate`. No OS upgrade | [Package lists](deploy-vm-cluster.md#refresh-the-package-lists), [prerequisites](deploy-vm-cluster.md#install-the-ceph-prerequisites) |
 | 2 | `setup` | node-01 to node-03 | Add the lab hosts to `/etc/hosts`, check the host-only network, check the disks, check the Podman version, install the pinned cephadm on node-01 and node-02 | [Host names](deploy-vm-cluster.md#make-the-host-names-resolvable), [cephadm](deploy-vm-cluster.md#install-cephadm-on-node-01), [disk checks](deploy-vm-cluster.md#apply-the-cluster-layout) |
-| 3 | `install_podman` | node-01 | Bootstrap, copy the cluster SSH key, set the OSD memory target, apply the layout, enable the dashboard, deploy monitoring and the gateway, check `HEALTH_OK` | The rest of both guides |
+| 3 | `setup` (`precheck.yml`) | node-01 to node-03 | Read only: check the host names, the host-only network, the disks and the Podman version again, and the pinned cephadm and `cephadm check-host` on node-01 and node-02 | Same checks as stage 2 |
+| 3 | `install_podman` | node-01 | Bootstrap, copy the cluster SSH key, set the OSD memory target, apply the layout, enable the dashboard, deploy monitoring and the gateway, check the gateway certificate, check `HEALTH_OK` and the layout by name | The rest of both guides |
 
 Running it again is safe:
 
@@ -27,9 +28,10 @@ Running it again is safe:
 The playbook does not partition, format or wipe any disk. New Vagrant disks are blank, and `ceph-volume` creates its own LVM on the raw disk when it makes the OSD. The `setup` role only checks each disk in `ceph_data_devices` and `ceph_reserve_devices`:
 
 - It must exist and sit on its SCSI port from `ceph_disk_by_path`.
-- `wipefs` (read only, without `-a`) must show either nothing, or `LVM2_member` in a `ceph-...` volume group, which means it is already an OSD.
+- `wipefs` (read only, without `-a`) must show either nothing, or `LVM2_member` in a `ceph-...` volume group.
+- An `LVM2_member` disk must also be an OSD of this cluster, checked on its own logical volumes: `lvs --separator '|' -o lv_name,devices,lv_tags` must show exactly one volume on that disk only, whose tags name that volume in `ceph.block_device=`, and hold `ceph.type=block`, an OSD id, an OSD fsid and exactly `ceph.cluster_fsid=` with the fsid from `grep fsid /etc/ceph/ceph.conf` on node-01. Before bootstrap there is no fsid, so any LVM disk stops the run.
 
-Anything else stops the playbook before Ceph is installed. To start over, recreate the VMs with `vagrant destroy` and `vagrant up`.
+Anything else stops the playbook before Ceph is installed. After the [low-space exercise](add-reserve-disks.md) has added `/dev/sdc`, set `ceph_reserve_devices_in_ceph: true` in `inventory/group_vars/ceph.yml`. Otherwise the final layout check stops the run, because it expects OSDs on `/dev/sdb` only. The install stage runs these disk checks again, so `--tags install` on its own also checks the disks as they are now. To start over, recreate the VMs with `vagrant destroy` and `vagrant up`.
 
 ## Where the settings are
 
@@ -110,6 +112,8 @@ Expect `failed=0` for all three VMs, and `podman version 5.7.0` from `Stop if Po
 ansible-playbook site.yml --tags install
 ```
 
+The stage first runs the read-only checks of stage 2 again on node-01 to node-03: host names, network, disks, the Podman version, and cephadm with `cephadm check-host` on node-01 and node-02. If cephadm is missing, the message tells you to run `--tags setup` first. Only then does it bootstrap or create OSDs.
+
 This takes about 15 minutes on a new cluster, mostly image downloads. Tasks that wait print `FAILED - RETRYING: ... (29 retries left)` while Ceph works in the background. That is Ansible checking again every 20 seconds, not an error: the task ends with `ok` once Ceph is ready. On 2026-11-09 the longest waits were:
 
 | Task | Waited | Why |
@@ -121,7 +125,9 @@ A task fails only when it runs out of retries, after 10 minutes. Then it prints 
 
 At the end expect:
 
+- `Stop if a gateway certificate is missing, expiring, wrongly named, incomplete or not shared` with `All 3 gateways serve one certificate`, its fingerprint, and all six names and addresses.
 - `Wait for HEALTH_OK` with `ok`.
+- `Stop if the cluster layout differs from the inventory` with `Monitors node-01, node-02, node-03; managers on node-01, node-02, node-03; OSDs up and in on node-01:sdb, node-02:sdb, node-03:sdb`.
 - `Show the cluster status` with three MONs in quorum, three MGRs and `osd: 3 osds: 3 up, 3 in`.
 - `Show how to open the dashboard` with the three gateway addresses.
 - `PLAY RECAP` with `failed=0` for node-01.

@@ -4,21 +4,8 @@
 # cephadm goes only on the ceph_admin hosts. The other hosts get it from the
 # cluster itself, over SSH, when they join.
 
-- name: Read the Podman version (podman --version)
-  ansible.builtin.command: podman --version
-  register: setup_podman
-  changed_when: false
-
-- name: Stop if Podman is not the tested version
-  ansible.builtin.assert:
-    that:
-      - setup_podman.stdout == 'podman version ' ~ setup_podman_version
-    fail_msg: >-
-      Expected "podman version {{ setup_podman_version }}" but found
-      "{{ setup_podman.stdout }}". Test the new version and update
-      configs/podman/versions.yml, or set setup_check_podman_version to false.
-    success_msg: "{{ setup_podman.stdout }}"
-  when: setup_check_podman_version
+- name: Check the Podman version
+  ansible.builtin.include_tasks: podman_check.yml
 
 - name: Install the pinned cephadm on the admin hosts
   when: inventory_hostname in groups['ceph_admin']
@@ -32,23 +19,5 @@
         group: root
         mode: "0755"
 
-    - name: Read the cephadm version (cephadm version)
-      ansible.builtin.command: "{{ cephadm_path }} version"
-      register: setup_cephadm_version
-      changed_when: false
-
-    - name: Stop if cephadm is not the pinned version and commit
-      ansible.builtin.assert:
-        that:
-          - setup_cephadm_version.stdout is search('cephadm version ' ~ cephadm_version ~ ' \(' ~ cephadm_commit ~ '\)')
-        fail_msg: "Unexpected cephadm version: {{ setup_cephadm_version.stdout }}"
-        quiet: true
-
-    - name: Check that the host meets cephadm's requirements (cephadm check-host)
-      ansible.builtin.command: "{{ cephadm_path }} check-host"
-      register: setup_check_host
-      changed_when: false
-
-    - name: Show the check-host result
-      ansible.builtin.debug:
-        msg: "{{ (setup_check_host.stdout_lines + setup_check_host.stderr_lines) | select | list }}"
+    - name: Check the installed cephadm version
+      ansible.builtin.include_tasks: cephadm_check.yml

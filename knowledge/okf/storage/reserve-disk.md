@@ -24,6 +24,7 @@ sources:
 # Rules
 
 - Attached from the start: Vagrant 2.4.9 deletes a disk removed from the Vagrantfile on the next reload (`VBoxManage closemedium <uuid> --delete`)[^finding-2026-11-08].
+- Ansible setting `ceph_reserve_devices_in_ceph` (default `false`). While `false`, the final layout check stops the run if an OSD sits on `/dev/sdc`. Set it to `true` after the low-space exercise.
 - Never use `ceph orch apply osd --all-available-devices` or the dashboard's **Add storage** button. On 2026-11-08 that button made `osd.cost_capacity` with `host_pattern: '*'` and took all three reserve disks; they were removed again with `ceph orch osd rm 3 4 5 --zap`.
 
 # Open questions

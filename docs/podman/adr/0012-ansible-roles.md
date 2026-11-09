@@ -16,7 +16,10 @@ The manual install in the [deployment guide](../diataxis/how-to/deploy-vm-cluste
 - Settings shared by every method live in `inventory/group_vars/all.yml` and `ceph.yml`; settings of one method live in `vars/<method>.yml`. Roles have no defaults of their own, so a beginner has only these files to look at.
 - Pinned versions are read from `configs/<method>/versions.yml`, for podman [configs/podman/versions.yml](../../../configs/podman/versions.yml), instead of being copied.
 - Only `ansible.builtin` modules and no `shell` module. Each task runs one command from the manual guide, and its name says which.
-- Disk preparation is a check only. A disk must be blank or already a Ceph OSD; anything else stops the run.
+- Disk preparation is a check only. A disk must be blank or already an OSD of this cluster: it must hold exactly one logical volume, on that disk only, whose tags name that volume as `ceph.block_device` and hold `ceph.type=block`, an OSD id, an OSD fsid and exactly the fsid from `/etc/ceph/ceph.conf` on the bootstrap host. Tags are compared as whole values. Anything else stops the run. (Added 2026-11-09; before, a `ceph-...` volume group name was enough.)
+- The install stage first runs the setup role's read-only checks again (`roles/setup/tasks/precheck.yml`: host names, network, disks, Podman version, cephadm and `cephadm check-host`) on every storage VM, so a staged `--tags install` run checks its current targets before bootstrap and OSD creation. (Added 2026-11-09.)
+- The gateway certificate is checked on every gateway, not by name alone: common name, at least `ceph_gateway_cert_min_days` (30) days left, every gateway name and address as a whole entry, and one fingerprint on all gateways. A failed check makes a new certificate. (Added 2026-11-09.)
+- The final check compares the layout with the inventory by name and place: the quorum names, the hosts with a running manager, every OSD up and in, and `host:disk` of every OSD against `ceph_osd_devices`. The reserve disks count only when `ceph_reserve_devices_in_ceph` is true. (Added 2026-11-09.)
 - Ansible logs in with the per-VM keys Vagrant creates and, like `vagrant ssh`, does not store host keys.
 
 ## Consequences

@@ -1,0 +1,19 @@
+# Read only. Checks that every other storage VM resolves to its host-only
+# address. Used by hosts_file.yml and by precheck.yml.
+# Manual: deploy-vm-cluster.md, "Make the host names resolvable".
+
+- name: Look up the other storage VMs by name (getent hosts)
+  ansible.builtin.command: getent hosts {{ item }}
+  loop: "{{ groups['ceph'] | difference([inventory_hostname]) }}"
+  register: setup_getent
+  changed_when: false
+
+- name: Stop if a name does not resolve to its host-only address
+  ansible.builtin.assert:
+    that:
+      - item.stdout.split()[0] == hostvars[item.item].ansible_host
+    fail_msg: "{{ item.item }} resolves to '{{ item.stdout }}', expected {{ hostvars[item.item].ansible_host }}."
+    quiet: true
+  loop: "{{ setup_getent.results }}"
+  loop_control:
+    label: "{{ item.item }}"

@@ -283,6 +283,8 @@ sudo cephadm shell -- ceph df
 
 Keep `/home/vagrant/cluster-spec.yaml` with both disk paths. If you re-apply the original file with only `/dev/sdb`, cephadm stops creating new OSDs on `/dev/sdc` but does not remove the existing ones.
 
+If you run the Ansible playbook again after this exercise, first set `ceph_reserve_devices_in_ceph: true` in `ansible/inventory/group_vars/ceph.yml`. Then the playbook writes both disk paths into the layout and expects an OSD on `/dev/sdb` and `/dev/sdc` on every host. Left at `false`, its final layout check stops the run, because an OSD now sits on a reserve disk.
+
 ## What this shows
 
 - Ceph warns early, at 85 percent, and stops writes at 95 percent of the fullest OSD, not of the average.
