@@ -5,7 +5,11 @@
 # raw disk when it makes the OSD. So nothing is partitioned, formatted or
 # wiped here. Each disk must be one of:
 #   - blank (no signature at all), or
-#   - already a Ceph OSD (an LVM physical volume in a "ceph-..." volume group).
+#   - already an OSD of this cluster: an LVM physical volume in a "ceph-..."
+#     volume group whose logical volume carries the tags ceph.type=block and
+#     ceph.cluster_fsid=<fsid>, where <fsid> is read from /etc/ceph/ceph.conf
+#     on the bootstrap host. A Ceph disk from another cluster, or any Ceph
+#     disk before this cluster exists, stops the run.
 # Anything else stops the playbook, so you can look at the disk yourself.
 # To start over, recreate the VMs with "vagrant destroy" and "vagrant up".
 
@@ -68,7 +72,7 @@
   register: setup_disk_vg
   changed_when: false
 
-- name: Stop if an LVM disk does not belong to Ceph
+- name: Stop if an LVM disk is not in a Ceph volume group
   ansible.builtin.assert:
     that:
       - item.stdout | trim is match('ceph-')
@@ -79,3 +83,68 @@
   loop: "{{ setup_disk_vg.results }}"
   loop_control:
     label: "{{ item.item.item }}"
+
+- name: Check whether the cluster exists on the bootstrap host (/etc/ceph/ceph.conf)
+  ansible.builtin.stat:
+    path: /etc/ceph/ceph.conf
+  delegate_to: "{{ groups['ceph_bootstrap'][0] }}"
+  run_once: true
+  register: setup_ceph_conf
+
+- name: Read the cluster fsid on the bootstrap host (grep fsid /etc/ceph/ceph.conf)
+  ansible.builtin.command: grep fsid /etc/ceph/ceph.conf
+  delegate_to: "{{ groups['ceph_bootstrap'][0] }}"
+  run_once: true
+  register: setup_ceph_conf_fsid
+  changed_when: false
+  when: setup_ceph_conf.stat.exists
+
+# Each disk is checked on its own logical volumes only: lvs lists every LV
+# of the volume group with the devices it sits on, and only the LVs on this
+# disk count. Tags are compared as whole values (one list item per tag), so
+# "ceph.cluster_fsid=<fsid>" must match exactly, not as part of a longer text.
+- name: List the logical volumes, their devices and tags in each Ceph volume group (lvs)
+  ansible.builtin.command: >-
+    lvs --noheadings --separator | -o lv_name,devices,lv_tags {{ item.stdout | trim }}
+  loop: "{{ setup_disk_vg.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"
+  register: setup_disk_lvs
+  changed_when: false
+
+# An OSD disk made by ceph-volume holds exactly one LV, on this disk only,
+# whose tags name that same LV as the block device, say ceph.type=block,
+# carry an OSD id and OSD fsid, and carry this cluster's fsid.
+- name: Stop if an LVM disk is not an OSD of this cluster
+  ansible.builtin.assert:
+    that:
+      - setup_cluster_fsid | length > 0
+      - setup_lvs_on_disk | length == 1
+      - setup_lv[1] is match('^' ~ setup_disk ~ '\([0-9]+\)$')
+      - ('ceph.block_device=/dev/' ~ setup_vg ~ '/' ~ setup_lv[0]) in setup_lv_tags
+      - "'ceph.type=block' in setup_lv_tags"
+      - ('ceph.cluster_fsid=' ~ setup_cluster_fsid) in setup_lv_tags
+      - setup_lv_tags | select('match', '^ceph\.osd_id=[0-9]+$') | list | length == 1
+      - setup_lv_tags | select('match', '^ceph\.osd_fsid=[0-9a-f-]{36}$') | list | length == 1
+    fail_msg: >-
+      {{ setup_disk }} on {{ inventory_hostname }} is not an OSD of this cluster.
+      Cluster fsid on {{ groups['ceph_bootstrap'][0] }}:
+      "{{ setup_cluster_fsid if setup_cluster_fsid else 'none, no cluster yet' }}".
+      Logical volumes on the disk (name|devices|tags): {{ setup_lvs_on_disk }}.
+      This playbook never wipes disks.
+    quiet: true
+  vars:
+    setup_disk: "{{ item.item.item.item }}"
+    setup_vg: "{{ item.item.stdout | trim }}"
+    # Lines "name|devices|tags" whose devices include this disk.
+    setup_lvs_on_disk: >-
+      {{ item.stdout_lines | map('trim')
+      | select('search', '^[^|]*\|([^|]*,)?' ~ setup_disk ~ '\(') | list }}
+    setup_lv: "{{ (setup_lvs_on_disk | first | default('||')).split('|') }}"
+    setup_lv_tags: "{{ setup_lv[2].split(',') }}"
+    setup_cluster_fsid: >-
+      {{ setup_ceph_conf_fsid.stdout | default('')
+      | regex_search('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}') | default('', true) }}
+  loop: "{{ setup_disk_lvs.results }}"
+  loop_control:
+    label: "{{ item.item.item.item }}"

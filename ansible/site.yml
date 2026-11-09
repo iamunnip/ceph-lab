@@ -13,6 +13,9 @@
 #   ansible-playbook site.yml --tags setup
 #   ansible-playbook site.yml --tags install
 #
+# The install stage first runs the setup role's read-only checks again
+# (host names, network, disks, Podman, cephadm), so "--tags install" alone never skips them.
+#
 # Each stage runs the same steps as the manual guide of the chosen method,
 # for podman docs/podman/diataxis/how-to/deploy-vm-cluster.md. Running it
 # again is safe: it never bootstraps a second time and never wipes a disk.
@@ -66,6 +69,17 @@
   tags: setup
   roles:
     - setup
+
+- name: "Stage 3, install: check host names, network, disks, Podman and cephadm again, read only"
+  hosts: ceph
+  become: true
+  any_errors_fatal: true
+  tags: install
+  tasks:
+    - name: Run the setup role's read-only checks (roles/setup/tasks/precheck.yml)
+      ansible.builtin.include_role:
+        name: setup
+        tasks_from: precheck.yml
 
 - name: "Stage 3, install: create the cluster with the chosen method"
   hosts: ceph_bootstrap

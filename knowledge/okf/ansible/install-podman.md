@@ -12,6 +12,9 @@ sources:
   - id: finding-2026-11-09
     resource: ../../../docs/podman/findings/2026-11-09-end-to-end.md
     title: "Finding 2026-11-09: End-to-end test, manual install then Ansible"
+  - id: finding-stronger-checks
+    resource: ../../../docs/podman/findings/2026-11-09-stronger-checks.md
+    title: "Finding 2026-11-09: Stronger Ansible checks on new VMs"
 ---
 
 # Facts
@@ -20,6 +23,7 @@ sources:
 |----------------------|---------------------------------------------------------------|
 | Folder               | `ansible/roles/install_podman/`                             |
 | Run by               | `ansible/site.yml` stage 3, on group `ceph_bootstrap`, tag `install` |
+| Before it            | `setup` role `precheck.yml` on group `ceph`: network, disks and cephadm, read only |
 | Other hosts          | `delegate_to` for the SSH key and the second admin host     |
 | Commands             | `cephadm shell -- ceph ...`, as in the manual guide         |
 | Templates            | `cluster-spec.yaml.j2`, `monitoring-spec.yaml.j2`; for the lab inventory they render the same as the files in `configs/podman/` |
@@ -33,14 +37,19 @@ sources:
 |--------------------|-------------------------------------------------------------|
 | `bootstrap.yml`  | `cephadm bootstrap` unless `/etc/ceph/ceph.conf` exists; checks `public_network` |
 | `ssh_access.yml` | Adds `/etc/ceph/ceph.pub` to `authorized_keys` on the other VMs, then `ceph cephadm check-host` |
-| `cluster.yml`    | OSD memory settings, layout, waits for quorum and OSDs      |
+| `cluster.yml`    | OSD memory settings, layout (`ceph_osd_devices`), waits until the quorum is exactly the `ceph_mon` hosts and every OSD is up and in |
 | `admin_hosts.yml` | Waits for the admin keyring on node-02, `ceph health` from there |
 | `dashboard.yml`  | Module, cephadm CA certificate, `admin` user with a random password in `/root/ceph-dashboard-password` |
 | `monitoring.yml` | Image pins, monitoring layout, waits for every service      |
-| `gateway_cert.yml` | Shared `CN=ceph-lab-gateway` certificate when not yet served |
-| `verify.yml`     | Waits for `HEALTH_OK`, stops if a MON uses `10.0.2.15`  |
+| `gateway_cert.yml` | Makes the shared `CN=ceph-lab-gateway` certificate when `gateway_cert_read.yml` finds a problem, waits until every gateway serves it, then checks again |
+| `gateway_cert_read.yml` | Read only: `openssl s_client` and `openssl x509 -checkend` on every gateway: CN, 30 days left, all six SAN entries, one fingerprint |
+| `verify.yml`     | Waits for `HEALTH_OK`, stops if a MON uses `10.0.2.15`, runs `topology.yml` |
+| `topology.yml`   | Read only: quorum names, running MGR hosts (`ceph orch ps --refresh`, retried up to 10 minutes because the cached list can lag after a MGR restart), every OSD up and in, `host:disk` of every OSD from `ceph osd metadata` equals `ceph_osd_devices` on every `ceph_osd` host |
 
 # Safety
+
+- Added on 2026-11-09 after the end-to-end test: the certificate and layout checks. On new VMs the same day the first run made a new gateway certificate and both checks passed; the second run kept it, `changed=0`[^finding-stronger-checks]. The failing paths were tested on localhost only (six certificate cases with real openssl output, seven layout cases with sample JSON).
+- The fingerprint is read in its own `openssl x509 -fingerprint -sha256`: OpenSSL 4.1.0 printed a wrong SHA-256 fingerprint when `-ext subjectAltName` was in the same command[^finding-stronger-checks].
 
 - Each setting, certificate and user is checked first and changed only when needed.
 - Passwords and private keys use `no_log: true` and stay on node-01.
@@ -53,3 +62,4 @@ sources:
 
 [^adr-0012]: ADR 0012: Automate the VM install with three Ansible roles
 [^finding-2026-11-09]: Finding 2026-11-09: End-to-end test, manual install then Ansible
+[^finding-stronger-checks]: Finding 2026-11-09: Stronger Ansible checks on new VMs

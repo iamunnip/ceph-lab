@@ -1,0 +1,81 @@
+# Read only. Reads the certificate every gateway serves and checks it.
+# Used twice by gateway_cert.yml: before it decides whether to make a new
+# certificate, and at the end to prove every gateway serves the right one.
+# Manual: dashboard.md, "Give the gateways one certificate for all three addresses",
+# the openssl s_client and openssl x509 checks.
+#
+# Sets install_gateway_cert_state:
+#   problems     : one line per problem found, empty when all is well
+#   fingerprints : the SHA-256 fingerprint each gateway serves, in gateway order
+
+- name: Read the certificate every gateway serves (openssl s_client)
+  ansible.builtin.command:
+    cmd: openssl s_client -connect {{ hostvars[item].ansible_host }}:{{ ceph_gateway_port }}
+    stdin: "" # close the connection right after the handshake
+  loop: "{{ groups['ceph_gateway'] }}"
+  register: install_gateway_served
+  changed_when: false
+  failed_when: false
+
+# -checkend prints "Certificate will not expire" only when the certificate is
+# still valid ceph_gateway_cert_min_days from now.
+- name: Read the name, end date and addresses of each certificate (openssl x509)
+  ansible.builtin.command:
+    cmd: >-
+      openssl x509 -noout -subject -enddate
+      -ext subjectAltName -checkend {{ ceph_gateway_cert_min_days | int * 86400 }}
+    stdin: "{{ item.stdout | regex_search('-----BEGIN CERTIFICATE-----[\\s\\S]*?-----END CERTIFICATE-----') | default('', true) }}"
+  loop: "{{ install_gateway_served.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: install_gateway_x509
+  changed_when: false
+  failed_when: false
+
+# The fingerprint is read on its own. On 2026-11-09, OpenSSL 4.1.0 printed a
+# wrong SHA-256 fingerprint when -ext subjectAltName was in the same command
+# (OpenSSL 3.5.5 on the VMs printed the right one).
+- name: Read the SHA-256 fingerprint of each certificate (openssl x509 -fingerprint)
+  ansible.builtin.command:
+    cmd: openssl x509 -noout -fingerprint -sha256
+    stdin: "{{ item.stdout | regex_search('-----BEGIN CERTIFICATE-----[\\s\\S]*?-----END CERTIFICATE-----') | default('', true) }}"
+  loop: "{{ install_gateway_served.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: install_gateway_fingerprint
+  changed_when: false
+  failed_when: false
+
+# For each gateway: a certificate must be served, have the expected common
+# name, stay valid for ceph_gateway_cert_min_days, and list every gateway
+# name and address (ceph_gateway_cert_expected_san) as whole entries.
+- name: Note any gateway certificate that is missing, expiring, wrongly named or lacks an address
+  ansible.builtin.set_fact:
+    install_gateway_cert_state: >-
+      {%- set problems = [] -%}
+      {%- set fingerprints = [] -%}
+      {%- for r in install_gateway_x509.results -%}
+        {%- set gw = r.item.item -%}
+        {%- set fp = install_gateway_fingerprint.results[loop.index0].stdout | regex_findall('Fingerprint=([0-9A-F:]+)') -%}
+        {%- set _ = fingerprints.append(fp[0] if fp else 'none') -%}
+        {%- set san_line = r.stdout | regex_findall('Subject Alternative Name:\s*\n\s*(.*)') -%}
+        {%- set san = san_line[0].split(', ') if san_line else [] -%}
+        {%- set missing = ceph_gateway_cert_expected_san | difference(san) -%}
+        {%- if not fp -%}
+          {%- set _ = problems.append(gw ~ ': no certificate served') -%}
+        {%- else -%}
+          {%- if r.stdout is not search('(?m)^subject=.*CN ?= ?' ~ ceph_gateway_cert_cn ~ '$') -%}
+            {%- set _ = problems.append(gw ~ ': common name is not ' ~ ceph_gateway_cert_cn) -%}
+          {%- endif -%}
+          {%- if 'Certificate will not expire' not in r.stdout -%}
+            {%- set _ = problems.append(gw ~ ': expires within ' ~ ceph_gateway_cert_min_days ~ ' days or has expired') -%}
+          {%- endif -%}
+          {%- if missing | length > 0 -%}
+            {%- set _ = problems.append(gw ~ ': does not cover ' ~ missing | join(', ')) -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- if fingerprints | unique | length > 1 -%}
+        {%- set _ = problems.append('the gateways serve different certificates') -%}
+      {%- endif -%}
+      {{ {'problems': problems, 'fingerprints': fingerprints} }}

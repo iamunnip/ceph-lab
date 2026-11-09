@@ -32,7 +32,7 @@ sources:
 # Rules
 
 - Never partitioned, formatted or wiped by hand. `ceph-volume` builds its own LVM and BlueStore on the raw disk.
-- The Ansible [setup](../ansible/setup.md) role only checks it: blank, or already an LVM PV in a `ceph-...` VG. Anything else stops the run.
+- The Ansible [setup](../ansible/setup.md) role only checks it: blank, or already an LVM PV in a `ceph-...` VG with exactly one LV on this disk, whose tags name that LV and hold `ceph.type=block` and exactly this cluster's `ceph.cluster_fsid`. Anything else stops the run.
 
 # Learn more
 

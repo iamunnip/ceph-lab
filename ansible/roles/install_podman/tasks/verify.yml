@@ -29,6 +29,9 @@
     fail_msg: "A monitor uses the NAT address 10.0.2.15. Ceph must use {{ lab_network_cidr }} only."
     quiet: true
 
+- name: Check the layout by name and place (monitors, managers, OSDs, reserve disks)
+  ansible.builtin.include_tasks: topology.yml
+
 - name: Show the cluster status
   ansible.builtin.debug:
     msg: "{{ install_status.stdout_lines }}"

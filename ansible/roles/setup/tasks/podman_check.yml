@@ -1,0 +1,19 @@
+# Podman install method only. Read only: checks the Podman version.
+# Used by podman.yml and by precheck.yml.
+# Manual: deploy-vm-cluster.md, "Install the Ceph prerequisites" (Podman check).
+
+- name: Read the Podman version (podman --version)
+  ansible.builtin.command: podman --version
+  register: setup_podman
+  changed_when: false
+
+- name: Stop if Podman is not the tested version
+  ansible.builtin.assert:
+    that:
+      - setup_podman.stdout == 'podman version ' ~ setup_podman_version
+    fail_msg: >-
+      Expected "podman version {{ setup_podman_version }}" but found
+      "{{ setup_podman.stdout }}". Test the new version and update
+      configs/podman/versions.yml, or set setup_check_podman_version to false.
+    success_msg: "{{ setup_podman.stdout }}"
+  when: setup_check_podman_version

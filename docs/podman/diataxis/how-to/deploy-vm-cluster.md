@@ -547,6 +547,22 @@ sudo lvs --noheadings -o lv_tags
 
 The output is one long comma-separated line. Look for `ceph.osd_id=` with this host's OSD number, `ceph.cluster_fsid=` with your fsid, `ceph.type=block` and `ceph.encrypted=0`. At boot, `ceph-volume` reads these tags to find and start the OSD.
 
+To compare, show the cluster fsid on **node-01**:
+
+```sh
+grep fsid /etc/ceph/ceph.conf
+```
+
+Expect one line `fsid = <uuid>`. The `ceph.cluster_fsid=` tag on every storage VM must show the same uuid. A disk with Ceph tags from another cluster is not yours to reuse; recreate the VM instead.
+
+To see which logical volume sits on which disk, on each storage VM:
+
+```sh
+sudo lvs --noheadings --separator '|' -o lv_name,devices,lv_tags
+```
+
+Expect one line, `osd-block-<uuid>|/dev/sdb(0)|ceph.block_device=/dev/ceph-<uuid>/osd-block-<uuid>,...`. The Ansible disk check reads this per disk: the disk must hold exactly one logical volume, on that disk only, whose tags name that same volume in `ceph.block_device=`, and hold `ceph.type=block`, `ceph.osd_id=<number>`, `ceph.osd_fsid=<uuid>` and exactly `ceph.cluster_fsid=<your fsid>`.
+
 Check the monitor addresses and the pool policy on **node-01**:
 
 ```sh
@@ -560,6 +576,42 @@ sudo cephadm shell -- ceph osd pool ls detail
 ```
 
 Expect `pool 1 '.mgr' replicated size 3 min_size 2`.
+
+### Check the layout by name
+
+Counts alone can hide a wrong layout, for example three OSDs with two on one host. Check the names and places on **node-01**.
+
+Monitors in quorum:
+
+```sh
+sudo cephadm shell -- ceph quorum_status -f json-pretty
+```
+
+Expect `"quorum_names"` with exactly `"node-01"`, `"node-02"` and `"node-03"`.
+
+Managers and the hosts they run on:
+
+```sh
+sudo cephadm shell -- ceph orch ps
+```
+
+Look at the lines that start with `mgr.`. cephadm shows cached states; if a manager restarted recently and shows something other than `running`, ask for a fresh list with `sudo cephadm shell -- ceph orch ps --refresh` and run `ceph orch ps` again after a minute. Expect exactly three, one `mgr.<host>.<suffix>` on each of node-01, node-02 and node-03, each `running`.
+
+Every OSD up and in:
+
+```sh
+sudo cephadm shell -- ceph osd dump
+```
+
+Expect three lines `osd.0 up   in`, `osd.1 up   in` and `osd.2 up   in`.
+
+The host and disk of every OSD:
+
+```sh
+sudo cephadm shell -- ceph osd metadata -f json-pretty
+```
+
+The output is long. For each OSD look at `"hostname"` and `"devices"`. Expect `node-01` with `sdb`, `node-02` with `sdb` and `node-03` with `sdb`, one OSD each, and never `sdc`: the reserve disks stay out of Ceph until the [low-space exercise](add-reserve-disks.md). The Ansible final check compares these four results with the inventory.
 
 ## Add a second administration host
 

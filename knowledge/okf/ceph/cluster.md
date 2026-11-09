@@ -25,7 +25,7 @@ sources:
 | Ceph version       | 20.2.5 tentacle (stable), commit `ed27c686`              |
 | Image              | `quay.io/ceph/ceph@sha256:4337ac8ac81d40df136e5eac92ca53bb52360a5e039f3d1f7935e729eb5ef42c` |
 | Bootstrapped on    | [node-01](../nodes/node-01.md), `--mon-ip 192.168.56.11 --ssh-user vagrant --skip-monitoring-stack --skip-dashboard` |
-| fsid               | Running cluster: `73110d94-dbfb-11f1-9010-08002708f50c` (Ansible, 2026-11-09). Earlier, destroyed: `8946ca06-...` (by hand, 2026-11-09), `81c36e54-...` (by hand, 2026-11-08). A new cluster gets a new one |
+| fsid               | Running cluster: `bcd7adcc-dc0d-11f1-b502-0800271f81c1` (Ansible, 2026-11-09, stronger-checks test). Earlier, destroyed: `73110d94-...` (Ansible, 2026-11-09), `8946ca06-...` (by hand, 2026-11-09), `81c36e54-...` (by hand, 2026-11-08). A new cluster gets a new one |
 | Kernel             | Box kernel 7.0.0-34, no OS upgrade, since 2026-11-09[^finding-2026-11-09] |
 | Public network     | `192.168.56.0/24`, no cluster network                    |
 | Layout             | One spec file, `configs/podman/cluster-spec.example.yaml`, applied with `ceph orch apply -i` |

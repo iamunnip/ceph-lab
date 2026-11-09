@@ -3,6 +3,9 @@
 # others, or the dashboard gateway fails with
 # 'host not found in upstream "node-01:8443"'.
 #
+# The name check is in hosts_check.yml, so the install stage can run it
+# again without changing /etc/hosts.
+#
 # lineinfile adds a line only if that exact line is missing, so running
 # this again, or after the manual step, adds nothing twice.
 
@@ -17,18 +20,5 @@
     line: "{{ hostvars[item].ansible_host }} {{ item }}"
   loop: "{{ groups['all'] }}"
 
-- name: Look up the other storage VMs by name (getent hosts)
-  ansible.builtin.command: getent hosts {{ item }}
-  loop: "{{ groups['ceph'] | difference([inventory_hostname]) }}"
-  register: setup_getent
-  changed_when: false
-
-- name: Stop if a name does not resolve to its host-only address
-  ansible.builtin.assert:
-    that:
-      - item.stdout.split()[0] == hostvars[item.item].ansible_host
-    fail_msg: "{{ item.item }} resolves to '{{ item.stdout }}', expected {{ hostvars[item.item].ansible_host }}."
-    quiet: true
-  loop: "{{ setup_getent.results }}"
-  loop_control:
-    label: "{{ item.item }}"
+- name: Check that the lab host names resolve
+  ansible.builtin.include_tasks: hosts_check.yml

@@ -25,7 +25,7 @@ sources:
 | Runs on                | Your computer, in `vm/vagrant/podman/` or `vm/vagrant/snap/`[^adr-0013] |
 | Reads                  | The `Vagrantfile` in the current folder             |
 | Provider               | [VirtualBox](virtualbox.md)                         |
-| Box                    | `cloud-image/ubuntu-26.04` 20260927.0.0             |
+| Box                    | `cloud-image/ubuntu-26.04` 20260927.0.0, pinned with `config.vm.box_version` in both Vagrantfiles |
 | Disks                  | Set with `vm.disk`, built in                        |
 | State folder           | `.vagrant/` inside the method folder (VM IDs and SSH keys, not in git) |
 | Shared folder          | `/vagrant` disabled                                 |

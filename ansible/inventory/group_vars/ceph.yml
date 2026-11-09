@@ -15,6 +15,15 @@ ceph_data_devices:
 ceph_reserve_devices:
   - /dev/sdc
 
+# false: the reserve disks must stay out of Ceph, and the final check stops
+# the run if one holds an OSD. Set it to true only after the low-space
+# exercise has added them; then the layout lists them too and every host
+# must have an OSD on each data and reserve disk.
+ceph_reserve_devices_in_ceph: false
+
+# The disks that must hold an OSD on every host in the ceph_osd group.
+ceph_osd_devices: "{{ ceph_data_devices + (ceph_reserve_devices if ceph_reserve_devices_in_ceph | bool else []) }}"
+
 # Which SCSI port each disk sits on, so a renamed disk is never mistaken for
 # another. Leave this empty ({}) on platforms without these paths.
 ceph_disk_by_path:

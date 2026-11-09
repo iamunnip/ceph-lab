@@ -38,6 +38,7 @@ roles/
   prereq/                    # Stage 1, shared: apt-get update, install the method's packages
   setup/                     # Stage 2, shared: /etc/hosts, network and disk checks,
     tasks/podman.yml         #   then the method's file: Podman check and cephadm
+    tasks/precheck.yml       #   read-only checks repeated at the start of stage 3
     tasks/snap.yml           #   (snap: to write)
   install_podman/            # Stage 3, podman: bootstrap, layout, dashboard, monitoring
     templates/               #   cluster and monitoring layout files, built from the variables
@@ -50,7 +51,10 @@ Each task file starts with a comment that names the manual step it automates. Ea
 
 ## Rules the playbook follows
 
-- It never wipes, partitions or formats a disk. It checks that each disk is blank or already a Ceph OSD, and stops otherwise.
+- It never wipes, partitions or formats a disk. It checks that each disk is blank or already an OSD of this cluster (LVM tags with this cluster's fsid), and stops otherwise.
+- The install stage repeats the read-only host name, network, disk, Podman and cephadm checks first (with `cephadm check-host`), so `--tags install` alone never skips them.
+- It checks that all gateways serve one certificate with the right name, every gateway name and address, and at least 30 days left.
+- At the end it checks the layout by name and place: the monitors in quorum, the manager hosts, and one up and in OSD on each expected host and disk, so the reserve disks stay unused.
 - It never bootstraps twice, never upgrades the OS and never reboots a VM.
 - Ceph uses only the host-only network 192.168.56.0/24, never the NAT address 10.0.2.15.
 - Passwords and private keys stay on node-01 and are never printed (`no_log: true`).

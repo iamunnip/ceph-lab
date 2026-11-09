@@ -31,6 +31,7 @@ sources:
 # Rules
 
 - Needs the [host name lines](../networks/host-names.md): upstreams are `node-0N:8443`.
+- The Ansible check needs, on every gateway: `CN=ceph-lab-gateway`, at least 30 days left (`openssl x509 -checkend 2592000`), all six SAN entries, and the same SHA-256 fingerprint. A failure makes a new certificate.
 - After `ceph orch reconfig mgmt-gateway`, `ceph orch restart mgmt-gateway` is needed before nginx serves a new certificate.
 
 # Known issues

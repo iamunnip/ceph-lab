@@ -234,7 +234,35 @@ Expect `Scheduled to restart mgmt-gateway.node-01 ...` for all three. The gatewa
 echo | openssl s_client -connect 192.168.56.11:443 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName
 ```
 
-Expect `CN=ceph-lab-gateway` and all six names. Remove the working copies on node-01; the cert store keeps both:
+Expect `CN=ceph-lab-gateway` and all six names. Check all three gateways in full: the name, the end date, every address, that it stays valid for at least 30 more days (2592000 seconds), and the fingerprint. Read the fingerprint in its own command: on 2026-11-09, OpenSSL 4.1.0 on the host printed a wrong SHA-256 fingerprint when `-ext subjectAltName` was in the same command.
+
+```sh
+echo | openssl s_client -connect 192.168.56.11:443 2>/dev/null | openssl x509 -noout -subject -enddate -ext subjectAltName -checkend 2592000
+```
+
+```sh
+echo | openssl s_client -connect 192.168.56.11:443 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+```sh
+echo | openssl s_client -connect 192.168.56.12:443 2>/dev/null | openssl x509 -noout -subject -enddate -ext subjectAltName -checkend 2592000
+```
+
+```sh
+echo | openssl s_client -connect 192.168.56.12:443 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+```sh
+echo | openssl s_client -connect 192.168.56.13:443 2>/dev/null | openssl x509 -noout -subject -enddate -ext subjectAltName -checkend 2592000
+```
+
+```sh
+echo | openssl s_client -connect 192.168.56.13:443 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+Expect, for each address, `subject=CN=ceph-lab-gateway`, a `notAfter=` date about 825 days ahead, the line `DNS:node-01, DNS:node-02, DNS:node-03, IP Address:192.168.56.11, IP Address:192.168.56.12, IP Address:192.168.56.13`, and `Certificate will not expire` from the first command of each pair. The `sha256 Fingerprint=` from the second command must be the same on all three: one certificate, shared by every gateway. The Ansible playbook runs the same checks and makes a new certificate when one fails.
+
+Remove the working copies on node-01; the cert store keeps both:
 
 ```sh
 sudo rm -r /root/gw-cert

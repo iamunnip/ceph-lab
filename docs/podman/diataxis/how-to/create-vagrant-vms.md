@@ -97,7 +97,7 @@ Create and boot node-01 to node-03:
 vagrant up
 ```
 
-The first run downloads the `cloud-image/ubuntu-26.04` box, which takes a few minutes. For each VM, expect these lines:
+The first run downloads the `cloud-image/ubuntu-26.04` box, which takes a few minutes. The Vagrantfile pins the box to version `20260927.0.0` (`config.vm.box_version`), the version this lab was tested with, so a newer box release is never used by accident. To check which box versions you have, run `vagrant box list`; expect `cloud-image/ubuntu-26.04 (virtualbox, 20260927.0.0, (amd64))`. For each VM, expect these lines:
 
 ```text
 Disk 'node-01-os' needs to be resized. Resizing disk...

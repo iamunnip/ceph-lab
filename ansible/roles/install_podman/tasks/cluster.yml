@@ -24,23 +24,28 @@
     ceph orch apply -i /spec.yaml
   changed_when: install_cluster_spec.changed
 
-- name: Wait until every monitor is in quorum (ceph quorum_status)
+# The quorum must hold exactly the hosts in ceph_mon, by name, not only
+# the right number of monitors.
+- name: Wait until exactly the ceph_mon hosts are in quorum (ceph quorum_status)
   ansible.builtin.command: "{{ cephadm_path }} shell -- ceph quorum_status -f json"
   register: install_quorum
   changed_when: false
   until: >-
     install_quorum.rc == 0
-    and (install_quorum.stdout | from_json).quorum_names | length == groups['ceph_mon'] | length
+    and (install_quorum.stdout | from_json).quorum_names | sort == groups['ceph_mon'] | sort
   retries: "{{ ceph_wait_retries }}"
   delay: "{{ ceph_wait_delay }}"
 
-- name: Wait until every data disk is an OSD that is up (ceph osd stat)
+# Which OSD sits on which host and disk is checked at the end (verify.yml).
+- name: Wait until every OSD disk is an OSD that is up and in (ceph osd stat)
   ansible.builtin.command: "{{ cephadm_path }} shell -- ceph osd stat -f json"
   register: install_osd_stat
   changed_when: false
   until: >-
     install_osd_stat.rc == 0
     and (install_osd_stat.stdout | from_json).num_up_osds
-    >= groups['ceph_osd'] | length * ceph_data_devices | length
+    == groups['ceph_osd'] | length * ceph_osd_devices | length
+    and (install_osd_stat.stdout | from_json).num_in_osds
+    == groups['ceph_osd'] | length * ceph_osd_devices | length
   retries: "{{ ceph_wait_retries }}"
   delay: "{{ ceph_wait_delay }}"
