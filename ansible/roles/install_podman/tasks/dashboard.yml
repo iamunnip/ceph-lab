@@ -1,0 +1,142 @@
+# Manual: dashboard.md, "Enable the dashboard", "Give the dashboard a
+# certificate from the cephadm CA" and "Create your login".
+# Tasks that touch the private key or the password use no_log: true, so
+# Ansible never prints them.
+
+# --- Enable the module -----------------------------------------------------
+
+- name: List the enabled manager modules (ceph mgr module ls)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph mgr module ls -f json"
+  register: install_mgr_modules
+  changed_when: false
+
+- name: Turn on the dashboard module (ceph mgr module enable dashboard)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph mgr module enable dashboard"
+  when: "'dashboard' not in (install_mgr_modules.stdout | from_json).enabled_modules"
+  changed_when: true
+
+# --- Certificate from the cephadm CA ---------------------------------------
+# A self-signed dashboard certificate breaks the Prometheus and Alertmanager
+# pages, because the gateway accepts only certificates from the cephadm CA.
+
+- name: Read the dashboard certificate, if there is one (ceph config-key get mgr/dashboard/crt)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph config-key get mgr/dashboard/crt"
+  register: install_dashboard_crt
+  changed_when: false
+  failed_when: false # no certificate yet is fine
+
+- name: Read who issued the dashboard certificate (openssl x509 -issuer)
+  ansible.builtin.command:
+    cmd: openssl x509 -noout -issuer
+    stdin: "{{ install_dashboard_crt.stdout }}"
+  register: install_dashboard_issuer
+  changed_when: false
+  when: install_dashboard_crt.rc == 0
+
+- name: Decide whether the dashboard needs a new certificate
+  ansible.builtin.set_fact:
+    install_dashboard_needs_cert: >-
+      {{ install_dashboard_crt.rc != 0
+      or 'cephadm-root' not in install_dashboard_issuer.stdout | default('') }}
+
+- name: Give the dashboard a certificate from the cephadm CA
+  when: install_dashboard_needs_cert | bool
+  block:
+    - name: Ask cephadm for a dashboard certificate and key (ceph orch certmgr generate-certificates)
+      ansible.builtin.command: "{{ cephadm_path }} shell -- ceph orch certmgr generate-certificates dashboard"
+      register: install_dashboard_certs
+      changed_when: true
+      no_log: true
+
+    - name: Create a working folder only root can open
+      ansible.builtin.file:
+        path: "{{ ceph_dashboard_cert_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Write the certificate into the folder
+      ansible.builtin.copy:
+        content: "{{ (install_dashboard_certs.stdout | from_json).cert }}"
+        dest: "{{ ceph_dashboard_cert_dir }}/dashboard.crt"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Write the private key into the folder
+      ansible.builtin.copy:
+        content: "{{ (install_dashboard_certs.stdout | from_json).key }}"
+        dest: "{{ ceph_dashboard_cert_dir }}/dashboard.key"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Give the certificate to the dashboard (ceph dashboard set-ssl-certificate)
+      ansible.builtin.command: >-
+        {{ cephadm_path }} shell --mount {{ ceph_dashboard_cert_dir }}:/c --
+        ceph dashboard set-ssl-certificate -i /c/dashboard.crt
+      changed_when: true
+
+    - name: Give the key to the dashboard (ceph dashboard set-ssl-certificate-key)
+      ansible.builtin.command: >-
+        {{ cephadm_path }} shell --mount {{ ceph_dashboard_cert_dir }}:/c --
+        ceph dashboard set-ssl-certificate-key -i /c/dashboard.key
+      changed_when: true
+
+    - name: Remove the working folder, the cluster keeps both files
+      ansible.builtin.file:
+        path: "{{ ceph_dashboard_cert_dir }}"
+        state: absent
+
+    - name: Fail over the active manager so the dashboard loads the new certificate (ceph mgr fail)
+      ansible.builtin.command: "{{ cephadm_path }} shell -- ceph mgr fail"
+      changed_when: true
+
+# --- First login -----------------------------------------------------------
+
+# Right after a failover the dashboard needs a moment, so keep asking.
+- name: List the dashboard users (ceph dashboard ac-user-show)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph dashboard ac-user-show"
+  register: install_dashboard_users
+  changed_when: false
+  until: install_dashboard_users.rc == 0
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"
+
+- name: Create the first login if it does not exist yet
+  when: ceph_dashboard_admin_user not in install_dashboard_users.stdout | from_json
+  block:
+    - name: Check whether a password file is already there
+      ansible.builtin.stat:
+        path: "{{ ceph_dashboard_password_file }}"
+      register: install_password_file
+
+    - name: Generate a random password (openssl rand -base64 24)
+      ansible.builtin.command: openssl rand -base64 24
+      register: install_new_password
+      changed_when: false
+      no_log: true
+      when: not install_password_file.stat.exists
+
+    - name: Write the password into a file only root can read
+      ansible.builtin.copy:
+        content: "{{ install_new_password.stdout | trim }}"
+        dest: "{{ ceph_dashboard_password_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+        force: false # never replace an existing password file
+      no_log: true
+      when: not install_password_file.stat.exists
+
+    - name: Create the dashboard user from the password file (ceph dashboard ac-user-create)
+      ansible.builtin.command: >-
+        {{ cephadm_path }} shell --mount {{ ceph_dashboard_password_file }}:/pw --
+        ceph dashboard ac-user-create {{ ceph_dashboard_admin_user }} -i /pw
+        {{ ceph_dashboard_admin_role }}
+        {{ '--pwd_update_required' if ceph_dashboard_password_update_required else '' }}
+      changed_when: true
+      no_log: true # the output contains the password hash

@@ -1,0 +1,9 @@
+# Role: install_snap
+# Runs on: the bootstrap host (group ceph_bootstrap, node-01).
+# Not written yet: it is built from the manual snap steps in docs/snap/ once
+# they are verified, the same way install_podman follows
+# docs/podman/diataxis/how-to/deploy-vm-cluster.md.
+
+- name: Stop, because the snap install is not written yet
+  ansible.builtin.fail:
+    msg: "roles/install_snap is not written yet. Write it from the verified manual steps in docs/snap/."

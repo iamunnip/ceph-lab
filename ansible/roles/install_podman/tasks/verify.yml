@@ -1,0 +1,44 @@
+# Manual: deploy-vm-cluster.md, "Verification and recovery".
+# Right after a deployment Ceph can show short-lived warnings, such as
+# "stray daemon(s) not managed by cephadm". They clear by themselves within
+# a minute or two, so keep asking for a while.
+
+- name: Wait for HEALTH_OK (ceph health)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph health"
+  register: install_health
+  changed_when: false
+  until: install_health.stdout is match('HEALTH_OK')
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"
+  when: ceph_require_health_ok
+
+- name: Read the cluster status (ceph -s)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph -s"
+  register: install_status
+  changed_when: false
+
+- name: Read the monitor addresses (ceph mon dump)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph mon dump"
+  register: install_mon_dump
+  changed_when: false
+
+- name: Stop if a monitor listens on the NAT address
+  ansible.builtin.assert:
+    that:
+      - "'10.0.2.15' not in install_mon_dump.stdout"
+    fail_msg: "A monitor uses the NAT address 10.0.2.15. Ceph must use {{ lab_network_cidr }} only."
+    quiet: true
+
+- name: Show the cluster status
+  ansible.builtin.debug:
+    msg: "{{ install_status.stdout_lines }}"
+
+- name: Show how to open the dashboard
+  ansible.builtin.debug:
+    msg:
+      - "Dashboard: {{ groups['ceph_gateway'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^(.*)$', 'https://\\1/') | join(' or ') }}"
+      - "User: {{ ceph_dashboard_admin_user }}"
+      - "First password: on {{ inventory_hostname }}, run: sudo cat {{ ceph_dashboard_password_file }}"
+  when:
+    - ceph_dashboard_enabled
+    - ceph_monitoring_enabled

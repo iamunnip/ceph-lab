@@ -1,0 +1,81 @@
+# Manual: deploy-vm-cluster.md, "Apply the cluster layout" (the blank-disk checks).
+#
+# Disk preparation in this lab means checking, not changing.
+# New Vagrant disks are blank, and ceph-volume creates its own LVM on the
+# raw disk when it makes the OSD. So nothing is partitioned, formatted or
+# wiped here. Each disk must be one of:
+#   - blank (no signature at all), or
+#   - already a Ceph OSD (an LVM physical volume in a "ceph-..." volume group).
+# Anything else stops the playbook, so you can look at the disk yourself.
+# To start over, recreate the VMs with "vagrant destroy" and "vagrant up".
+
+- name: Check that each Ceph disk exists
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ ceph_data_devices + ceph_reserve_devices }}"
+  register: setup_disk_stat
+
+- name: Stop if a disk is missing or not a block device
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isblk
+    fail_msg: "{{ item.item }} is missing or is not a disk on {{ inventory_hostname }}."
+    quiet: true
+  loop: "{{ setup_disk_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Find the disk behind each SCSI port path (readlink -f)
+  ansible.builtin.command: readlink -f {{ item.value }}
+  loop: "{{ ceph_disk_by_path | dict2items }}"
+  register: setup_disk_by_path
+  changed_when: false
+
+- name: Stop if a disk is not on its expected SCSI port
+  ansible.builtin.assert:
+    that:
+      - item.stdout == item.item.key
+    fail_msg: "{{ item.item.value }} points to {{ item.stdout }}, expected {{ item.item.key }}."
+    quiet: true
+  loop: "{{ setup_disk_by_path.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+
+- name: List the signatures on each disk, read only (wipefs without -a)
+  ansible.builtin.command: wipefs --noheadings --output TYPE {{ item }}
+  loop: "{{ ceph_data_devices + ceph_reserve_devices }}"
+  register: setup_disk_signatures
+  changed_when: false
+
+- name: Stop if a disk holds anything except nothing or Ceph's LVM
+  ansible.builtin.assert:
+    that:
+      - item.stdout in ['', 'LVM2_member']
+    fail_msg: >-
+      {{ item.item }} on {{ inventory_hostname }} holds "{{ item.stdout }}".
+      It is not blank and not a Ceph OSD. This playbook never wipes disks.
+    quiet: true
+  loop: "{{ setup_disk_signatures.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read the volume group of each disk that holds LVM (pvs)
+  ansible.builtin.command: pvs --noheadings -o vg_name {{ item.item }}
+  loop: "{{ setup_disk_signatures.results | selectattr('stdout', 'equalto', 'LVM2_member') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: setup_disk_vg
+  changed_when: false
+
+- name: Stop if an LVM disk does not belong to Ceph
+  ansible.builtin.assert:
+    that:
+      - item.stdout | trim is match('ceph-')
+    fail_msg: >-
+      {{ item.item.item }} on {{ inventory_hostname }} is in volume group
+      "{{ item.stdout | trim }}", not a Ceph one. This playbook never wipes disks.
+    quiet: true
+  loop: "{{ setup_disk_vg.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"

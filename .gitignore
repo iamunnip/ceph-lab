@@ -4,8 +4,7 @@ __pycache__/
 .venv/
 
 # Reader-specific VM inventory
-vm/inventory/local.json
-vm/inventory/*.local.json
+ansible/inventory/*.local.yml
 
 # Local environment and cloud/Kubernetes credentials
 .env

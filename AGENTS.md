@@ -1,11 +1,11 @@
 # Repository working rules
 
 - Start with the VM track; Kubernetes and Rook deployment tracks remain deferred until explicitly planned.
-- The VM lab runs on Vagrant and VirtualBox from `vm/vagrant/Vagrantfile`. Ceph uses only the host-only network 192.168.56.0/24 on `enp0s8`, never the NAT address 10.0.2.15.
+- The VM track has two install methods, podman (cephadm with Podman) and snap (Ceph from a snap). Each has its own Vagrantfile, `vm/vagrant/podman/Vagrantfile` and `vm/vagrant/snap/Vagrantfile`, its own `configs/<method>/` and `docs/<method>/`, and one shared `ansible/` playbook chooses between them with `ceph_install_method`. Both use the same VM names and addresses, so only one lab runs at a time. The VM lab runs on Vagrant and VirtualBox. Ceph uses only the host-only network 192.168.56.0/24 on `enp0s8`, never the NAT address 10.0.2.15.
 - Install Ceph by hand first and verify each step. Use manual commands only: one plain command at a time, no scripts, loops, `sh -c` wrappers or helper files. Record every command in the docs with its purpose, the VM that runs it and its expected output. Ansible automation follows only after the manual steps are verified, and is built from those recorded commands.
 - Never run or suggest npm, npx, pnpm, yarn, bun, node or other JavaScript tooling.
-- Update affected `vm/docs/` and `vm/knowledge/okf/` alongside every meaningful implementation change or experiment. Separate planned behavior from observed evidence.
-- Record consequential architecture changes in `vm/docs/adr/`; keep the architecture and track plans consistent.
+- Update the affected track's docs in the root `docs/` folder (`docs/podman/` or `docs/snap/`) and the shared root `knowledge/okf/` (a facts-only OKF bundle like kube-lab's: `index.md`, `log.md`, one folder per topic) alongside every meaningful implementation change or experiment. Full experiment records go in `docs/<method>/findings/`. Separate planned behavior from observed evidence.
+- Record consequential design changes in the track's ADR folder (`docs/podman/adr/` or `docs/snap/adr/`); keep the ADRs, guides and knowledge pages consistent.
 - Never commit secrets or unredacted cluster credentials.
 - Never infer permission to wipe a disk from its size or availability. Destructive operations need explicit targets, ownership checks and confirmation.
   New Vagrant disks are blank, so a deployment never needs a wipe; to start over, recreate the VMs. Never remove a disk from the Vagrantfile while its VM exists, since Vagrant then deletes it.

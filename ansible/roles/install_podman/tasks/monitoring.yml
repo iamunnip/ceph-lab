@@ -1,0 +1,39 @@
+# Manual: deploy-vm-cluster.md, "Monitoring and HTTPS gateway".
+
+- name: Pin every monitoring image by digest
+  ansible.builtin.include_tasks: config_set.yml
+  vars:
+    ceph_settings: "{{ ceph_monitoring_image_settings }}"
+
+- name: Write the monitoring layout file
+  ansible.builtin.template:
+    src: monitoring-spec.yaml.j2
+    dest: "{{ ceph_monitoring_spec_path }}"
+    owner: "{{ ceph_ssh_user }}"
+    group: "{{ ceph_ssh_user }}"
+    mode: "0644"
+  register: install_monitoring_spec
+
+# Like the cluster layout, applying the same file again changes nothing.
+- name: Apply the monitoring layout (ceph orch apply -i)
+  ansible.builtin.command: >-
+    {{ cephadm_path }} shell --mount {{ ceph_monitoring_spec_path }}:/spec.yaml --
+    ceph orch apply -i /spec.yaml
+  changed_when: install_monitoring_spec.changed
+
+# The images are downloaded first, so this can take several minutes.
+# --refresh, because the manager restarts once during this step and the list
+# can otherwise stay at 0 running for several minutes (seen on 2026-11-09).
+- name: Wait until every monitoring service runs all its daemons, can take minutes (ceph orch ls --refresh)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph orch ls {{ item }} --refresh -f json"
+  loop: "{{ ceph_monitoring_services }}"
+  register: install_service_status
+  changed_when: false
+  until: >-
+    install_service_status.rc == 0
+    and (install_service_status.stdout | from_json) | length > 0
+    and (install_service_status.stdout | from_json)[0].status.size > 0
+    and (install_service_status.stdout | from_json)[0].status.running
+    == (install_service_status.stdout | from_json)[0].status.size
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"

@@ -1,0 +1,171 @@
+# Settings for the podman install method: cephadm runs every Ceph daemon
+# as a Podman container. Loaded by site.yml when ceph_install_method is podman.
+# The manual steps behind them are in docs/podman/diataxis/how-to/deploy-vm-cluster.md
+# and docs/podman/diataxis/how-to/dashboard.md.
+
+# ===========================================================================
+# Role: prereq
+# ===========================================================================
+
+# Packages cephadm needs on every storage VM.
+#   podman    : runs every Ceph daemon as a container
+#   lvm2      : ceph-volume builds its LVM on the data disk
+#   curl      : downloads cephadm (manual guide)
+#   python3   : cephadm is a Python program
+#   chrony    : monitors need synchronized clocks
+#   logrotate : rotates the Ceph logs on the host
+prereq_packages:
+  - podman
+  - lvm2
+  - curl
+  - python3
+  - chrony
+  - logrotate
+
+# Services that must run now and at every boot. Monitors need synchronized clocks.
+prereq_services:
+  - chrony
+
+# ===========================================================================
+# Role: setup (tasks/podman.yml)
+# ===========================================================================
+
+# Stop if Podman is not the version this lab was tested with.
+setup_check_podman_version: true
+setup_podman_version: "{{ lab_versions.podman }}"
+
+# The pinned standalone cephadm, installed on every host in the ceph_admin group.
+cephadm_url: "{{ lab_versions.cephadm_url }}"
+cephadm_sha256: "{{ lab_versions.cephadm_sha256 }}"
+cephadm_version: "{{ lab_versions.ceph }}"
+cephadm_commit: "{{ lab_versions.cephadm_commit }}"
+cephadm_path: /usr/local/sbin/cephadm
+
+# ===========================================================================
+# Role: install_podman (bootstrap, cluster layout, dashboard, monitoring)
+# ===========================================================================
+
+# --- Bootstrap -------------------------------------------------------------
+
+# The exact Ceph image, pinned by digest.
+ceph_image: "{{ lab_versions.ceph_image }}"
+
+# The first monitor's address: the bootstrap host's host-only address.
+ceph_mon_ip: "{{ hostvars[groups['ceph_bootstrap'][0]].ansible_host }}"
+
+# The account cephadm uses to manage the other hosts over SSH.
+ceph_ssh_user: "{{ ansible_user }}"
+ceph_ssh_user_home: "/home/{{ ceph_ssh_user }}"
+
+# --- Host labels -----------------------------------------------------------
+
+# Each Ceph label, and the inventory group whose hosts get it.
+ceph_host_labels:
+  _admin: ceph_admin
+  mon: ceph_mon
+  mgr: ceph_mgr
+  osd: ceph_osd
+  monitoring: ceph_monitoring
+  gateway: ceph_gateway
+
+# --- OSD memory ------------------------------------------------------------
+
+# Each VM has 6 GB RAM and later runs two OSDs, so give each OSD 1.5 GiB.
+# "who" and "name" are passed to "ceph config set <who> <name> <value>".
+ceph_osd_settings:
+  - who: osd
+    name: osd_memory_target_autotune
+    value: "false"
+  - who: osd
+    name: osd_memory_target
+    value: "1610612736"
+
+# --- Cluster layout --------------------------------------------------------
+
+# Where the generated layout file is written on the bootstrap host.
+ceph_cluster_spec_path: "{{ ceph_ssh_user_home }}/cluster-spec.yaml"
+
+# The name of the OSD service in "ceph orch ls".
+ceph_osd_service_id: data-disks
+ceph_osd_objectstore: bluestore
+
+# --- Dashboard -------------------------------------------------------------
+
+ceph_dashboard_enabled: true
+
+# A root-only working folder for the dashboard certificate. It is removed afterwards.
+ceph_dashboard_cert_dir: /root/dashboard-cert
+
+# The first dashboard login. Its random password is written on the bootstrap
+# host only, readable only by root. It never comes back to your computer.
+ceph_dashboard_admin_user: admin
+ceph_dashboard_admin_role: administrator
+ceph_dashboard_password_file: /root/ceph-dashboard-password
+
+# Force a new password at the first login.
+ceph_dashboard_password_update_required: true
+
+# --- Monitoring stack and HTTPS gateway ------------------------------------
+
+ceph_monitoring_enabled: true
+
+# Pin every monitoring image by digest.
+ceph_monitoring_image_settings:
+  - who: mgr
+    name: mgr/cephadm/container_image_prometheus
+    value: "{{ lab_versions.prometheus_image }}"
+  - who: mgr
+    name: mgr/cephadm/container_image_alertmanager
+    value: "{{ lab_versions.alertmanager_image }}"
+  - who: mgr
+    name: mgr/cephadm/container_image_grafana
+    value: "{{ lab_versions.grafana_image }}"
+  - who: mgr
+    name: mgr/cephadm/container_image_node_exporter
+    value: "{{ lab_versions.node_exporter_image }}"
+  - who: mgr
+    name: mgr/cephadm/container_image_nginx
+    value: "{{ lab_versions.mgmt_gateway_image }}"
+
+# Where the generated monitoring file is written on the bootstrap host.
+ceph_monitoring_spec_path: "{{ ceph_ssh_user_home }}/monitoring-spec.yaml"
+
+# The services in the monitoring file. The playbook waits until each one runs.
+ceph_monitoring_services:
+  - node-exporter
+  - ceph-exporter
+  - prometheus
+  - alertmanager
+  - grafana
+  - mgmt-gateway
+
+# The OS disks are small, so cap Prometheus data by age and by size.
+ceph_prometheus_retention_time: 15d
+ceph_prometheus_retention_size: 2GB
+
+# The gateway's HTTPS port and TLS versions.
+ceph_gateway_port: 443
+ceph_gateway_ssl_protocols:
+  - TLSv1.2
+  - TLSv1.3
+
+# --- One gateway certificate for every gateway address ---------------------
+
+ceph_gateway_shared_cert_enabled: true
+ceph_gateway_cert_dir: /root/gw-cert
+ceph_gateway_cert_cn: ceph-lab-gateway
+ceph_gateway_cert_days: 825
+ceph_gateway_cert_key_bits: 3072
+
+# The names and addresses the certificate covers: every gateway host by name
+# and by address. With the lab inventory this becomes
+# DNS:node-01,DNS:node-02,DNS:node-03,IP:192.168.56.11,IP:192.168.56.12,IP:192.168.56.13
+ceph_gateway_cert_san: >-
+  {{ (groups['ceph_gateway'] | map('regex_replace', '^', 'DNS:') | list
+  + groups['ceph_gateway'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '^', 'IP:') | list)
+  | join(',') }}
+
+# --- Final check -----------------------------------------------------------
+
+# Wait for HEALTH_OK at the end, and fail if it never comes.
+ceph_require_health_ok: true

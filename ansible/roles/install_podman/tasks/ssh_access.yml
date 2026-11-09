@@ -1,0 +1,38 @@
+# Manual: deploy-vm-cluster.md, "Let cephadm reach the other hosts".
+#
+# Bootstrap made an SSH key pair for the cluster. The private key stays in
+# the cluster. Each other storage VM must trust the public key, which is
+# copied from /etc/ceph/ceph.pub on the bootstrap host.
+
+- name: Read the cluster's public SSH key from /etc/ceph/ceph.pub
+  ansible.builtin.slurp:
+    src: /etc/ceph/ceph.pub
+  register: install_ceph_pub
+
+- name: Make sure ~/.ssh exists on the other storage VMs, only for its owner (mkdir -p, chmod 700)
+  ansible.builtin.file:
+    path: "{{ ceph_ssh_user_home }}/.ssh"
+    state: directory
+    owner: "{{ ceph_ssh_user }}"
+    group: "{{ ceph_ssh_user }}"
+    mode: "0700"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['ceph'] | difference(groups['ceph_bootstrap']) }}"
+
+- name: Add the cluster key to ~/.ssh/authorized_keys on the other storage VMs, keeping the Vagrant key
+  ansible.builtin.lineinfile:
+    path: "{{ ceph_ssh_user_home }}/.ssh/authorized_keys"
+    line: "{{ install_ceph_pub.content | b64decode | trim }}"
+    create: true
+    owner: "{{ ceph_ssh_user }}"
+    group: "{{ ceph_ssh_user }}"
+    mode: "0600"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['ceph'] | difference(groups['ceph_bootstrap']) }}"
+
+- name: Check that cephadm can log in to each other VM (ceph cephadm check-host)
+  ansible.builtin.command: >-
+    {{ cephadm_path }} shell --
+    ceph cephadm check-host {{ item }} {{ hostvars[item].ansible_host }}
+  loop: "{{ groups['ceph'] | difference(groups['ceph_bootstrap']) }}"
+  changed_when: false

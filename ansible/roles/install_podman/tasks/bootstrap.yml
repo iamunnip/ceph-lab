@@ -1,0 +1,31 @@
+# Manual: deploy-vm-cluster.md, "Bootstrap the cluster".
+#
+# Bootstrap creates /etc/ceph/ceph.conf. "creates:" skips the command when
+# that file exists, so a second run never bootstraps a second cluster.
+
+- name: Bootstrap the cluster with the pinned image on the host-only address (takes several minutes)
+  ansible.builtin.command:
+    cmd: >-
+      {{ cephadm_path }} --image {{ ceph_image }} bootstrap
+      --mon-ip {{ ceph_mon_ip }}
+      --ssh-user {{ ceph_ssh_user }}
+      --skip-monitoring-stack
+      --skip-dashboard
+    creates: /etc/ceph/ceph.conf
+
+- name: Read the cluster fsid (ceph fsid)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph fsid"
+  register: install_fsid
+  changed_when: false
+
+- name: Read the public network (ceph config get mon public_network)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph config get mon public_network"
+  register: install_public_network
+  changed_when: false
+
+- name: Stop if Ceph does not use the host-only network
+  ansible.builtin.assert:
+    that:
+      - install_public_network.stdout | trim == lab_network_cidr
+    fail_msg: "public_network is '{{ install_public_network.stdout | trim }}', expected {{ lab_network_cidr }}."
+    success_msg: "Cluster {{ install_fsid.stdout | trim }} uses {{ lab_network_cidr }}."

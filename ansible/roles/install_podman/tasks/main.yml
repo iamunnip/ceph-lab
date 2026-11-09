@@ -1,0 +1,39 @@
+# Role: install_podman
+# Runs on: the bootstrap host (group ceph_bootstrap, node-01).
+#          A few tasks run on the other VMs with "delegate_to".
+# Does:    bootstraps Ceph, lets cephadm reach the other VMs, applies the
+#          cluster layout, then the dashboard and monitoring.
+# Settings: vars/podman.yml, section "Role: install_podman", and inventory/group_vars/ceph.yml.
+#
+# Ceph commands run through "cephadm shell -- ceph ...", exactly as in the
+# manual guide. Each one starts a short-lived container, so they take a few
+# seconds each.
+
+- name: Bootstrap the cluster (first run only)
+  ansible.builtin.include_tasks: bootstrap.yml
+
+- name: Let cephadm reach the other storage VMs over SSH
+  ansible.builtin.include_tasks: ssh_access.yml
+
+- name: Apply the cluster layout (hosts, MON, MGR, OSD)
+  ansible.builtin.include_tasks: cluster.yml
+
+- name: Check the second administration host
+  ansible.builtin.include_tasks: admin_hosts.yml
+
+- name: Enable the dashboard and create the first login
+  ansible.builtin.include_tasks: dashboard.yml
+  when: ceph_dashboard_enabled
+
+- name: Deploy the monitoring stack and HTTPS gateway
+  ansible.builtin.include_tasks: monitoring.yml
+  when: ceph_monitoring_enabled
+
+- name: Give every gateway one certificate for all gateway addresses
+  ansible.builtin.include_tasks: gateway_cert.yml
+  when:
+    - ceph_monitoring_enabled
+    - ceph_gateway_shared_cert_enabled
+
+- name: Check the finished cluster
+  ansible.builtin.include_tasks: verify.yml
