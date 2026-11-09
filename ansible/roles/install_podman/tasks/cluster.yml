@@ -1,0 +1,46 @@
+# Manual: deploy-vm-cluster.md, "Set the OSD memory target" and
+# "Apply the cluster layout".
+
+- name: Set the OSD memory target to 1.5 GiB and turn off autotuning
+  ansible.builtin.include_tasks: config_set.yml
+  vars:
+    ceph_settings: "{{ ceph_osd_settings }}"
+
+- name: Write the cluster layout file from the inventory
+  ansible.builtin.template:
+    src: cluster-spec.yaml.j2
+    dest: "{{ ceph_cluster_spec_path }}"
+    owner: "{{ ceph_ssh_user }}"
+    group: "{{ ceph_ssh_user }}"
+    mode: "0644"
+  register: install_cluster_spec
+
+# Applying the same layout again changes nothing in Ceph, so this runs every
+# time. It reports "changed" only when the layout file changed.
+# This creates OSDs on the data disks of every host labeled osd.
+- name: Apply the cluster layout (ceph orch apply -i)
+  ansible.builtin.command: >-
+    {{ cephadm_path }} shell --mount {{ ceph_cluster_spec_path }}:/spec.yaml --
+    ceph orch apply -i /spec.yaml
+  changed_when: install_cluster_spec.changed
+
+- name: Wait until every monitor is in quorum (ceph quorum_status)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph quorum_status -f json"
+  register: install_quorum
+  changed_when: false
+  until: >-
+    install_quorum.rc == 0
+    and (install_quorum.stdout | from_json).quorum_names | length == groups['ceph_mon'] | length
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"
+
+- name: Wait until every data disk is an OSD that is up (ceph osd stat)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph osd stat -f json"
+  register: install_osd_stat
+  changed_when: false
+  until: >-
+    install_osd_stat.rc == 0
+    and (install_osd_stat.stdout | from_json).num_up_osds
+    >= groups['ceph_osd'] | length * ceph_data_devices | length
+  retries: "{{ ceph_wait_retries }}"
+  delay: "{{ ceph_wait_delay }}"

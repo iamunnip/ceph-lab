@@ -1,0 +1,39 @@
+# Managed by Ansible (ansible/roles/install_podman/templates/monitoring-spec.yaml.j2).
+# It matches configs/podman/monitoring-spec.yaml for the lab settings.
+service_type: node-exporter
+placement:
+  host_pattern: "*"
+---
+service_type: ceph-exporter
+placement:
+  host_pattern: "*"
+---
+service_type: prometheus
+placement:
+  label: monitoring
+  count: 1
+spec:
+  retention_time: {{ ceph_prometheus_retention_time }}
+  retention_size: {{ ceph_prometheus_retention_size }}
+---
+service_type: alertmanager
+placement:
+  label: monitoring
+  count: 1
+---
+service_type: grafana
+placement:
+  label: monitoring
+  count: 1
+---
+# One gateway on every host labeled gateway.
+service_type: mgmt-gateway
+placement:
+  label: gateway
+spec:
+  port: {{ ceph_gateway_port }}
+  ssl: true
+  ssl_protocols:
+{% for protocol in ceph_gateway_ssl_protocols %}
+    - {{ protocol }}
+{% endfor %}

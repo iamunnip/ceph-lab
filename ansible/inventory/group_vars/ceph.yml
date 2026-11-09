@@ -1,0 +1,34 @@
+# Settings for the storage VMs (the "ceph" group in hosts.yml) that are the
+# same for every install method. Settings for one method only are in
+# vars/podman.yml or vars/snap.yml.
+
+# ===========================================================================
+# Role: setup (host names, network check, disk check)
+# ===========================================================================
+
+# The data disk on every host in the ceph_osd group. It becomes the OSD.
+ceph_data_devices:
+  - /dev/sdb
+
+# The reserve disk. It stays out of Ceph until the low-space exercise
+# (docs/podman/diataxis/how-to/add-reserve-disks.md). The setup role only checks it.
+ceph_reserve_devices:
+  - /dev/sdc
+
+# Which SCSI port each disk sits on, so a renamed disk is never mistaken for
+# another. Leave this empty ({}) on platforms without these paths.
+ceph_disk_by_path:
+  /dev/sdb: /dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:1:0
+  /dev/sdc: /dev/disk/by-path/pci-0000:00:0f.0-scsi-0:0:2:0
+
+# ===========================================================================
+# Waiting
+# ===========================================================================
+
+# Ceph works in the background after many commands. The playbook checks
+# again every ceph_wait_delay seconds, up to ceph_wait_retries times
+# (30 x 20 seconds = 10 minutes). Image downloads take a few minutes.
+# Each check that is not ready yet prints "FAILED - RETRYING ... (N retries
+# left)". That is Ansible waiting, not an error.
+ceph_wait_retries: 30
+ceph_wait_delay: 20

@@ -1,0 +1,20 @@
+# Role: setup
+# Runs on: every storage VM (group ceph).
+# Does:    makes the VMs resolve each other's names, checks the network and
+#          checks the disks (the same for every method), then runs the
+#          method's own file: tasks/podman.yml installs the pinned cephadm.
+# Settings: inventory/group_vars/ceph.yml (shared) and vars/<method>.yml.
+
+- name: Make the lab host names resolvable
+  ansible.builtin.include_tasks: hosts_file.yml
+
+- name: Check the host-only network
+  ansible.builtin.include_tasks: network.yml
+
+- name: Check the Ceph disks (never wipes them)
+  ansible.builtin.include_tasks: disks.yml
+  when: inventory_hostname in groups['ceph_osd']
+
+# The rest depends on the install method: tasks/podman.yml or tasks/snap.yml.
+- name: Set up what the chosen install method needs
+  ansible.builtin.include_tasks: "{{ ceph_install_method }}.yml"

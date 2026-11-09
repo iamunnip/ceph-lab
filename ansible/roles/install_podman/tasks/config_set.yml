@@ -1,0 +1,23 @@
+# Sets Ceph options, but only those whose value differs.
+# Include this file with a list called "ceph_settings". Each item has:
+#   who:   the daemon type, for example osd or mgr
+#   name:  the option name
+#   value: the wanted value, as a string
+
+- name: Read the current value of each setting (ceph config get)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph config get {{ item.who }} {{ item.name }}"
+  loop: "{{ ceph_settings }}"
+  loop_control:
+    label: "{{ item.who }} {{ item.name }}"
+  register: install_current_settings
+  changed_when: false
+
+- name: Change only the settings that differ (ceph config set)
+  ansible.builtin.command: >-
+    {{ cephadm_path }} shell --
+    ceph config set {{ item.item.who }} {{ item.item.name }} {{ item.item.value }}
+  loop: "{{ install_current_settings.results }}"
+  loop_control:
+    label: "{{ item.item.who }} {{ item.item.name }} = {{ item.item.value }}"
+  when: item.stdout | trim != item.item.value | string
+  changed_when: true

@@ -1,0 +1,16 @@
+# Settings for the snap install method: Ceph from a snap package.
+# Loaded by site.yml when ceph_install_method is snap.
+#
+# Not written yet. Install Ceph from the snap by hand first, one command at a
+# time, and record the commands in docs/snap/. Then fill in this file and
+# roles/setup/tasks/snap.yml and roles/install_snap/, and set
+# snap_automation_ready to true. Until then site.yml stops before any change.
+snap_automation_ready: false
+
+# The shared prereq role needs these two. Fill them in from the verified
+# manual steps:
+#
+# prereq_packages:        # apt packages the snap install needs
+#   - snapd
+# prereq_services:        # services that must run now and at every boot
+#   - snapd

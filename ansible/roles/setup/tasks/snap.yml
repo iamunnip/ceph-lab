@@ -1,0 +1,8 @@
+# Snap install method only. Loaded from main.yml when ceph_install_method is snap.
+# Not written yet: it is built from the manual snap steps in docs/snap/ once
+# they are verified. For example: install the pinned snap from
+# configs/snap/versions.yml on every storage VM.
+
+- name: Stop, because the snap setup is not written yet
+  ansible.builtin.fail:
+    msg: "roles/setup/tasks/snap.yml is not written yet. Write it from the verified manual steps in docs/snap/."

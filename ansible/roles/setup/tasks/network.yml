@@ -1,0 +1,17 @@
+# Manual: vm-preflight.md, "Network".
+# Ceph must use the host-only network, never the NAT address 10.0.2.15.
+
+- name: Stop if the host-only address is not on the expected network card
+  ansible.builtin.assert:
+    that:
+      - ansible_facts[lab_network_interface] is defined
+      - ansible_facts[lab_network_interface].ipv4.address == ansible_host
+    fail_msg: >-
+      Expected {{ ansible_host }} on {{ lab_network_interface }}.
+      Check "ip -4 -brief address" on {{ inventory_hostname }}.
+    quiet: true
+
+- name: Check that this VM reaches the other storage VMs (ping)
+  ansible.builtin.command: ping -c 2 {{ hostvars[item].ansible_host }}
+  loop: "{{ groups['ceph'] | difference([inventory_hostname]) }}"
+  changed_when: false

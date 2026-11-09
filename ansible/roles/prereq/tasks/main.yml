@@ -1,0 +1,24 @@
+# Role: prereq (the same for every install method)
+# Runs on: every storage VM (group ceph).
+# Does:    refreshes the package lists and installs the packages the chosen
+#          install method needs. It does not upgrade the OS or the kernel.
+# Manual:  docs/podman/diataxis/how-to/deploy-vm-cluster.md, "Refresh the
+#          package lists" and "Install the Ceph prerequisites".
+# Settings: vars/<method>.yml (prereq_packages, prereq_services).
+
+- name: Refresh the package lists (apt-get update)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600 # skip it when the lists are less than an hour old
+
+- name: Install the packages this install method needs (prereq_packages in vars/<method>.yml)
+  ansible.builtin.apt:
+    name: "{{ prereq_packages }}"
+    state: present
+
+- name: Make sure the needed services run now and at every boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: "{{ prereq_services }}"

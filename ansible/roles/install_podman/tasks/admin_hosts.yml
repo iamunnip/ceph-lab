@@ -1,0 +1,16 @@
+# Manual: deploy-vm-cluster.md, "Add a second administration host".
+# The _admin label makes cephadm copy ceph.conf and the admin keyring to the
+# host. cephadm itself was installed there by the setup role.
+
+- name: Wait until the admin keyring arrives on the other admin hosts
+  ansible.builtin.wait_for:
+    path: /etc/ceph/ceph.client.admin.keyring
+    timeout: "{{ ceph_wait_retries * ceph_wait_delay }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['ceph_admin'] | difference(groups['ceph_bootstrap']) }}"
+
+- name: Ask for the cluster health from the other admin hosts (ceph health)
+  ansible.builtin.command: "{{ cephadm_path }} shell -- ceph health"
+  delegate_to: "{{ item }}"
+  loop: "{{ groups['ceph_admin'] | difference(groups['ceph_bootstrap']) }}"
+  changed_when: false

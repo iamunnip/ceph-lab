@@ -1,0 +1,37 @@
+# Managed by Ansible (ansible/roles/install_podman/templates/cluster-spec.yaml.j2).
+# Built from the inventory: hosts and addresses from hosts.yml, labels from
+# the ceph_* groups, disks from group_vars/ceph.yml.
+# It matches configs/podman/cluster-spec.example.yaml for the lab inventory.
+{% for host in groups['ceph'] %}
+service_type: host
+hostname: {{ host }}
+addr: {{ hostvars[host].ansible_host }}
+labels:
+{% for label, group in ceph_host_labels.items() %}
+{% if host in groups[group] | default([]) %}
+  - {{ label }}
+{% endif %}
+{% endfor %}
+---
+{% endfor %}
+service_type: mon
+placement:
+  label: mon
+---
+service_type: mgr
+placement:
+  label: mgr
+---
+# Only the named data disks on hosts labeled osd. The reserve disks
+# ({{ ceph_reserve_devices | join(', ') }}) are not listed, so they stay out of Ceph.
+service_type: osd
+service_id: {{ ceph_osd_service_id }}
+placement:
+  label: osd
+spec:
+  objectstore: {{ ceph_osd_objectstore }}
+  data_devices:
+    paths:
+{% for device in ceph_data_devices %}
+      - {{ device }}
+{% endfor %}

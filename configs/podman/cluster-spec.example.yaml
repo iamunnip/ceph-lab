@@ -1,0 +1,39 @@
+# Declarative cephadm layout for the three Vagrant storage VMs.
+# The addresses match vm/vagrant/podman/Vagrantfile. Change them only if you changed that file.
+# Apply on node-01 with:
+#   sudo cephadm shell --mount $HOME/cluster-spec.yaml:/spec.yaml -- ceph orch apply -i /spec.yaml
+service_type: host
+hostname: node-01
+addr: 192.168.56.11
+labels: [_admin, mon, mgr, osd, gateway]
+---
+service_type: host
+hostname: node-02
+addr: 192.168.56.12
+labels: [_admin, mon, mgr, osd, monitoring, gateway]
+---
+service_type: host
+hostname: node-03
+addr: 192.168.56.13
+labels: [mon, mgr, osd, gateway]
+---
+service_type: mon
+placement:
+  label: mon
+---
+service_type: mgr
+placement:
+  label: mgr
+---
+# Only the named data disk on labeled hosts. /dev/sdc is the reserve disk and
+# must stay out of this list until you add it on purpose, see
+# docs/diataxis/how-to/add-reserve-disks.md.
+service_type: osd
+service_id: data-disks
+placement:
+  label: osd
+spec:
+  objectstore: bluestore
+  data_devices:
+    paths:
+      - /dev/sdb

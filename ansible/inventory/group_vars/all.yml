@@ -1,0 +1,50 @@
+# Settings for every VM in the lab.
+# If your VMs are not the ones from vm/vagrant/, change the user, key file,
+# network and interface here.
+
+# ---------------------------------------------------------------------------
+# Install method
+# ---------------------------------------------------------------------------
+
+# How Ceph is installed: "podman" (cephadm, every daemon in a Podman container)
+# or "snap" (Ceph from a snap, not written yet).
+# It picks the Vagrant folder (vm/vagrant/<method>/), the pinned versions
+# (configs/<method>/versions.yml) and the settings file (vars/<method>.yml).
+# Change it here, or for one run only:
+#   ansible-playbook site.yml -e ceph_install_method=snap
+ceph_install_method: podman
+
+# ---------------------------------------------------------------------------
+# How Ansible logs in
+# ---------------------------------------------------------------------------
+
+# Ansible logs in as this user. On the Vagrant box it has passwordless sudo.
+ansible_user: vagrant
+
+# Vagrant creates one private SSH key per VM, the same one "vagrant ssh" uses.
+# inventory_dir is the folder that holds hosts.yml (ansible/inventory/), so
+# "../.." is the repository root and this path works from any folder.
+ansible_ssh_private_key_file: "{{ inventory_dir }}/../../vm/vagrant/{{ ceph_install_method }}/.vagrant/machines/{{ vagrant_machine }}/virtualbox/private_key"
+
+# A recreated VM has new SSH host keys. Like "vagrant ssh", do not check or
+# store them. This is fine for a lab on your own computer, not for real servers.
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+# ---------------------------------------------------------------------------
+# Lab network
+# ---------------------------------------------------------------------------
+
+# Ceph uses only this host-only network.
+lab_network_cidr: 192.168.56.0/24
+
+# The network card inside each VM that holds the 192.168.56.x address.
+lab_network_interface: enp0s8
+
+# ---------------------------------------------------------------------------
+# Pinned versions
+# ---------------------------------------------------------------------------
+
+# All pinned versions, checksums and image digests of the chosen method come
+# from one file, configs/<method>/versions.yml, so the manual guide and Ansible
+# never disagree. Example: lab_versions.ceph is "20.2.5".
+lab_versions: "{{ lookup('ansible.builtin.file', inventory_dir ~ '/../../configs/' ~ ceph_install_method ~ '/versions.yml') | from_yaml }}"

@@ -1,0 +1,78 @@
+# Installs the three-VM Ceph lab. Run from the ansible/ folder:
+#
+#   ansible-playbook site.yml
+#
+# The install method comes from ceph_install_method in
+# inventory/group_vars/all.yml (podman or snap). To choose it for one run:
+#
+#   ansible-playbook site.yml -e ceph_install_method=podman
+#
+# Or run one stage at a time:
+#
+#   ansible-playbook site.yml --tags prereq
+#   ansible-playbook site.yml --tags setup
+#   ansible-playbook site.yml --tags install
+#
+# Each stage runs the same steps as the manual guide of the chosen method,
+# for podman docs/podman/diataxis/how-to/deploy-vm-cluster.md. Running it
+# again is safe: it never bootstraps a second time and never wipes a disk.
+
+- name: "Stage 0: check the install method before changing anything"
+  hosts: ceph
+  gather_facts: false
+  any_errors_fatal: true
+  tags: always # runs with every --tags choice
+  tasks:
+    - name: Stop if the install method is not podman or snap
+      ansible.builtin.assert:
+        that:
+          - ceph_install_method in ['podman', 'snap']
+        fail_msg: "ceph_install_method is '{{ ceph_install_method }}'. Use podman or snap."
+        quiet: true
+      run_once: true
+
+    - name: Load the settings of the chosen method (vars/<method>.yml)
+      ansible.builtin.include_vars:
+        file: "vars/{{ ceph_install_method }}.yml"
+
+    - name: Stop if the snap automation is not written yet
+      ansible.builtin.assert:
+        that:
+          - snap_automation_ready | bool
+        fail_msg: >-
+          The snap method has no automation yet. Install Ceph from the snap by
+          hand first and record the steps in docs/snap/. See vars/snap.yml.
+        quiet: true
+      run_once: true
+      when: ceph_install_method == 'snap'
+
+    - name: Show the chosen install method
+      ansible.builtin.debug:
+        msg: "Install method: {{ ceph_install_method }}"
+      run_once: true
+
+- name: "Stage 1, prereq: update the storage VMs and install the packages Ceph needs"
+  hosts: ceph
+  become: true
+  any_errors_fatal: true
+  tags: prereq
+  roles:
+    - prereq
+
+- name: "Stage 2, setup: host names, network and disk checks, install tools"
+  hosts: ceph
+  become: true
+  any_errors_fatal: true
+  tags: setup
+  roles:
+    - setup
+
+- name: "Stage 3, install: create the cluster with the chosen method"
+  hosts: ceph_bootstrap
+  become: true
+  any_errors_fatal: true
+  tags: install
+  tasks:
+    - name: Run the install role of the chosen method (install_podman or install_snap)
+      ansible.builtin.include_role:
+        name: "install_{{ ceph_install_method }}"
